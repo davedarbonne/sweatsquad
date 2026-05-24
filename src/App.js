@@ -11,11 +11,11 @@ const BADGE_DEFS = [
 ];
 
 const CHALLENGE_TEMPLATES = [
-  { name: "30-Day Pushup Challenge", unit: "pushups", goal: 1000, emoji: "💪" },
-  { name: "10K Steps Daily", unit: "steps", goal: 300000, emoji: "👟" },
-  { name: "Run 50 Miles", unit: "miles", goal: 50, emoji: "🏃" },
-  { name: "100 Min Plank Month", unit: "seconds", goal: 6000, emoji: "🧘" },
-  { name: "Burpee Blitz", unit: "burpees", goal: 500, emoji: "🔥" },
+  { name: "30-Day Pushup Challenge", unit: "pushups", goal: 1000, emoji: "💪", durationDays: 30 },
+  { name: "10K Steps Daily", unit: "steps", goal: 300000, emoji: "👟", durationDays: 30 },
+  { name: "Run 50 Miles", unit: "miles", goal: 50, emoji: "🏃", durationDays: 30 },
+  { name: "100 Min Plank Month", unit: "seconds", goal: 6000, emoji: "🧘", durationDays: 30 },
+  { name: "Burpee Blitz", unit: "burpees", goal: 500, emoji: "🔥", durationDays: 14 },
 ];
 
 function Avatar({ name, size = 36 }) {
@@ -75,7 +75,7 @@ export default function App() {
   const [challenges, setChallenges] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [logAmount, setLogAmount] = useState("");
-  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪" });
+  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "" });
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newBadges, setNewBadges] = useState([]);
@@ -176,6 +176,7 @@ export default function App() {
 
   const handleLog = async () => {
     if (!userName) { showToast("Set your name first!", "error"); return; }
+    if (isExpired(selectedChallenge)) { showToast("This challenge has ended!", "error"); return; }
     const amt = parseFloat(logAmount);
     if (!amt || amt <= 0) { showToast("Enter a valid amount", "error"); return; }
 
@@ -206,12 +207,13 @@ export default function App() {
       unit: newChallenge.unit,
       goal: parseFloat(newChallenge.goal),
       emoji: newChallenge.emoji,
+      durationDays: newChallenge.durationDays ? parseInt(newChallenge.durationDays) : null,
       createdBy: userName || "Anonymous",
       createdAt: Date.now(),
       logs: [],
     };
     await save([...challenges, ch]);
-    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪" });
+    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "" });
     setSelectedChallenge(null);
     setScreen("home");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -234,6 +236,28 @@ export default function App() {
   const formatTs = (ts) => {
     const d = new Date(ts);
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
+  const getEndTs = (ch) => {
+    if (!ch.durationDays) return null;
+    return ch.createdAt + ch.durationDays * 86400000;
+  };
+
+  const isExpired = (ch) => {
+    const end = getEndTs(ch);
+    return end ? Date.now() > end : false;
+  };
+
+  const getCountdown = (ch) => {
+    const end = getEndTs(ch);
+    if (!end) return null;
+    const diff = end - Date.now();
+    if (diff <= 0) return "Ended";
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    if (days > 0) return `${days}d ${hours}h left`;
+    const mins = Math.floor((diff % 3600000) / 60000);
+    return `${hours}h ${mins}m left`;
   };
 
   const navItems = [
@@ -344,6 +368,11 @@ export default function App() {
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
                         <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
+                      {getCountdown(ch) && (
+                        <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
+                          {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
+                        </div>
+                      )}
                       </div>
                       <div style={{ marginLeft: "auto", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
                     </div>
@@ -377,7 +406,15 @@ export default function App() {
                 </div>
                 <button onClick={() => setDeleteConfirm(ch.id)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "8px 10px", color: "#ef4444", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>🗑</button>
               </div>
-              {!completed && (
+              {getCountdown(ch) && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16, background: isExpired(ch) ? "rgba(239,68,68,0.08)" : "rgba(249,115,22,0.07)", border: `1px solid ${isExpired(ch) ? "rgba(239,68,68,0.3)" : "rgba(249,115,22,0.2)"}`, borderRadius: 12, padding: "10px 16px" }}>
+                  <span style={{ fontSize: 16 }}>{isExpired(ch) ? "🔴" : "⏱"}</span>
+                  <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color: isExpired(ch) ? "#ef4444" : "#f97316" }}>
+                    {isExpired(ch) ? "CHALLENGE ENDED" : getCountdown(ch).toUpperCase()}
+                  </span>
+                </div>
+              )}
+              {!completed && !isExpired(ch) && (
                 <div style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 16, padding: 18, marginBottom: 20 }}>
                   <div style={{ fontWeight: 700, marginBottom: 12 }}>Log Your Progress</div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -385,6 +422,13 @@ export default function App() {
                       style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 15, outline: "none" }} />
                     <button onClick={handleLog} style={{ background: "#f97316", border: "none", borderRadius: 10, padding: "10px 20px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15 }}>Log</button>
                   </div>
+                </div>
+              )}
+              {isExpired(ch) && !completed && (
+                <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 16, padding: 18, marginBottom: 20, textAlign: "center" }}>
+                  <div style={{ fontSize: 22, marginBottom: 4 }}>⏰</div>
+                  <div style={{ fontWeight: 700, color: "#ef4444" }}>Time's Up!</div>
+                  <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>This challenge has ended. Final standings are locked in.</div>
                 </div>
               )}
               {completed && (
@@ -430,7 +474,7 @@ export default function App() {
             <SectionLabel>QUICK START</SectionLabel>
             <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 20 }}>
               {CHALLENGE_TEMPLATES.map(t => (
-                <button key={t.name} onClick={() => setNewChallenge({ name: t.name, unit: t.unit, goal: t.goal, emoji: t.emoji })}
+                <button key={t.name} onClick={() => setNewChallenge({ name: t.name, unit: t.unit, goal: t.goal, emoji: t.emoji, durationDays: t.durationDays || "" })}
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 14px", color: "#fff", cursor: "pointer", whiteSpace: "nowrap", fontSize: 13, flexShrink: 0 }}>
                   {t.emoji} {t.name}
                 </button>
@@ -441,6 +485,7 @@ export default function App() {
                 { label: "Challenge Name", key: "name", placeholder: "e.g. 30-Day Pushup Challenge" },
                 { label: "Unit", key: "unit", placeholder: "e.g. pushups, miles, steps" },
                 { label: "Goal (total)", key: "goal", placeholder: "e.g. 1000", type: "number" },
+                { label: "Duration (days, optional)", key: "durationDays", placeholder: "e.g. 30  —  leave blank for no limit", type: "number" },
                 { label: "Emoji", key: "emoji", placeholder: "💪" },
               ].map(f => (
                 <div key={f.key}>
