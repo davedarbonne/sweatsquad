@@ -80,6 +80,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [newBadges, setNewBadges] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [shareLog, setShareLog] = useState(null); // { challengeName, emoji, amount, unit }
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [lastReadTs, setLastReadTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastread") || "0"));
 
   // Load username from localStorage
   useEffect(() => {
@@ -98,6 +103,20 @@ export default function App() {
     }, () => setLoading(false));
     return () => unsub();
   }, []);
+
+  // Real-time chat listener
+  useEffect(() => {
+    const ref = doc(db, "sweatsquad", "chat");
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        const msgs = snap.data().messages || [];
+        setMessages(msgs);
+        const unread = msgs.filter(m => m.ts > lastReadTs && m.user !== userName).length;
+        setUnreadCount(unread);
+      }
+    });
+    return () => unsub();
+  }, [lastReadTs, userName]); // eslint-disable-line
 
   // Update selectedChallenge in real-time when challenges change
   useEffect(() => {
@@ -195,6 +214,7 @@ export default function App() {
 
     setLogAmount("");
     showToast(`+${amt} ${selectedChallenge.unit} logged! 💪`);
+    setShareLog({ challengeName: selectedChallenge.name, emoji: selectedChallenge.emoji, amount: amt, unit: selectedChallenge.unit });
   };
 
   const handleCreateChallenge = async () => {
@@ -218,6 +238,31 @@ export default function App() {
     setScreen("home");
     window.scrollTo({ top: 0, behavior: "smooth" });
     showToast("Challenge created! 🎉");
+  };
+
+  const handleSendMessage = async (logShare = null) => {
+    if (!userName) { showToast("Set your name first!", "error"); return; }
+    const text = logShare ? null : chatInput.trim();
+    if (!logShare && !text) return;
+    const msg = {
+      id: Date.now().toString(),
+      user: userName,
+      ts: Date.now(),
+      text: logShare ? null : text,
+      logShare: logShare || null,
+    };
+    const ref = doc(db, "sweatsquad", "chat");
+    const updated = [...messages, msg];
+    await setDoc(ref, { messages: updated });
+    setChatInput("");
+    setShareLog(null);
+  };
+
+  const markChatRead = () => {
+    const now = Date.now();
+    setLastReadTs(now);
+    setUnreadCount(0);
+    localStorage.setItem("sweatsquad_lastread", now.toString());
   };
 
   const handleDeleteChallenge = async (id) => {
@@ -263,6 +308,7 @@ export default function App() {
   const navItems = [
     { label: "Challenges", icon: "🏋️", s: "home" },
     { label: "Create", icon: "➕", s: "create" },
+    { label: "Chat", icon: "💬", s: "chat" },
     { label: "My Stats", icon: "📊", s: "profile" },
   ];
 
@@ -287,6 +333,18 @@ export default function App() {
 
       {toast && (
         <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: toast.type === "error" ? "#7f1d1d" : "#14532d", border: `1px solid ${toast.type === "error" ? "#f87171" : "#4ade80"}`, color: "#fff", borderRadius: 12, padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 998, whiteSpace: "nowrap" }}>{toast.msg}</div>
+      )}
+
+      {shareLog && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.4)", borderRadius: 16, padding: "14px 18px", zIndex: 997, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.5)", minWidth: 280 }}>
+          <div style={{ fontSize: 22 }}>{shareLog.emoji}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Share to chat?</div>
+            <div style={{ fontSize: 12, color: "#888" }}>+{shareLog.amount} {shareLog.unit} — {shareLog.challengeName}</div>
+          </div>
+          <button onClick={() => handleSendMessage(shareLog)} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Share</button>
+          <button onClick={() => setShareLog(null)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+        </div>
       )}
 
       {deleteConfirm && (
@@ -501,6 +559,71 @@ export default function App() {
           </div>
         )}
 
+        {/* CHAT */}
+        {screen === "chat" && (
+          <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)" }}>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, letterSpacing: 2 }}>SQUAD CHAT 💬</div>
+              <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace" }}>Talk trash. Celebrate wins.</div>
+            </div>
+            {!userName && (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#555" }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>💬</div>
+                <div>Set your name first to chat</div>
+              </div>
+            )}
+            {userName && (
+              <>
+                {/* Messages */}
+                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, paddingBottom: 8 }}>
+                  {messages.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "40px 0", color: "#555" }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>👋</div>
+                      <div>No messages yet — say something!</div>
+                    </div>
+                  )}
+                  {messages.map((msg) => {
+                    const isMe = msg.user === userName;
+                    return (
+                      <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                        {!isMe && <div style={{ fontSize: 11, color: "#666", marginBottom: 3, marginLeft: 4, fontWeight: 600 }}>{msg.user}</div>}
+                        {msg.logShare ? (
+                          <div style={{ background: isMe ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.06)", border: `1px solid ${isMe ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 14, padding: "10px 14px", maxWidth: "80%", display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ fontSize: 24 }}>{msg.logShare.emoji}</div>
+                            <div>
+                              <div style={{ fontSize: 11, color: "#888", fontFamily: "'Space Mono', monospace" }}>WORKOUT LOGGED</div>
+                              <div style={{ fontWeight: 700, color: "#f97316" }}>+{msg.logShare.amount} {msg.logShare.unit}</div>
+                              <div style={{ fontSize: 12, color: "#ccc" }}>{msg.logShare.challengeName}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ background: isMe ? "#f97316" : "rgba(255,255,255,0.07)", borderRadius: 16, borderBottomRightRadius: isMe ? 4 : 16, borderBottomLeftRadius: isMe ? 16 : 4, padding: "10px 14px", maxWidth: "75%", fontSize: 15, color: isMe ? "#fff" : "#f0f0f0", lineHeight: 1.4 }}>
+                            {msg.text}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 10, color: "#444", marginTop: 2, marginLeft: 4, marginRight: 4 }}>
+                          {new Date(msg.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Input */}
+                <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                  <input
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleSendMessage()}
+                    placeholder="Say something..."
+                    style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 24, padding: "10px 16px", color: "#fff", fontSize: 15, outline: "none" }}
+                  />
+                  <button onClick={() => handleSendMessage()} style={{ background: "#f97316", border: "none", borderRadius: "50%", width: 44, height: 44, color: "#fff", cursor: "pointer", fontSize: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* PROFILE / STATS */}
         {screen === "profile" && (
           <div>
@@ -585,9 +708,14 @@ export default function App() {
       {/* Bottom nav */}
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(13,13,15,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.07)", padding: "10px 0 16px", display: "flex", justifyContent: "center", zIndex: 100 }}>
         {navItems.map(item => (
-          <button key={item.s} onClick={() => { setScreen(item.s); setSelectedChallenge(null); }}
-            style={{ background: "none", border: "none", color: screen === item.s ? "#f97316" : "#555", cursor: "pointer", padding: "6px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 1, transition: "color 0.2s" }}>
-            <span style={{ fontSize: 22 }}>{item.icon}</span>
+          <button key={item.s} onClick={() => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") markChatRead(); }}
+            style={{ background: "none", border: "none", color: screen === item.s ? "#f97316" : "#555", cursor: "pointer", padding: "6px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 1, transition: "color 0.2s", position: "relative" }}>
+            <span style={{ fontSize: 22, position: "relative" }}>
+              {item.icon}
+              {item.s === "chat" && unreadCount > 0 && (
+                <span style={{ position: "absolute", top: -4, right: -6, background: "#ef4444", borderRadius: "50%", width: 16, height: 16, fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900 }}>{unreadCount}</span>
+              )}
+            </span>
             {item.label}
           </button>
         ))}
