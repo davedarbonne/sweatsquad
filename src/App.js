@@ -80,6 +80,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [newBadges, setNewBadges] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [showArchive, setShowArchive] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [shareLog, setShareLog] = useState(null); // { challengeName, emoji, amount, unit }
@@ -293,6 +294,15 @@ export default function App() {
     return end ? Date.now() > end : false;
   };
 
+  const isNew = (ch) => {
+    return ch.createdAt && Date.now() - ch.createdAt < 86400000;
+  };
+
+  const isArchived = (ch) => {
+    const allDone = buildLeaderboard(ch).every(e => e.total >= ch.goal);
+    return isExpired(ch) || (allDone && buildLeaderboard(ch).length > 0);
+  };
+
   const getCountdown = (ch) => {
     const end = getEndTs(ch);
     if (!end) return null;
@@ -401,48 +411,63 @@ export default function App() {
               ) : null;
             })()}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <SectionLabel>ACTIVE CHALLENGES</SectionLabel>
-              <button onClick={() => setScreen("create")} style={{ background: "#f97316", border: "none", borderRadius: 10, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ New</button>
-            </div>
-            {challenges.length === 0 && (
-              <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🏋️</div>
-                <div style={{ fontWeight: 600, marginBottom: 6 }}>No challenges yet</div>
-                <div style={{ fontSize: 14 }}>Create the first one for your squad!</div>
+              <SectionLabel>{showArchive ? "ARCHIVED CHALLENGES" : "ACTIVE CHALLENGES"}</SectionLabel>
+              <div style={{ display: "flex", gap: 8 }}>
+                {challenges.some(ch => isArchived(ch)) && (
+                  <button onClick={() => setShowArchive(a => !a)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 12px", color: showArchive ? "#f97316" : "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                    {showArchive ? "← Active" : "Archive 📦"}
+                  </button>
+                )}
+                {!showArchive && <button onClick={() => setScreen("create")} style={{ background: "#f97316", border: "none", borderRadius: 10, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ New</button>}
               </div>
-            )}
-            {challenges.map(ch => {
-              const lb = buildLeaderboard(ch);
-              const myEntry = lb.find(e => e.user === userName);
-              const myTotal = myEntry?.total || 0;
-              const pct = Math.min(100, (myTotal / ch.goal) * 100);
-              return (
-                <div key={ch.id} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, padding: 18, marginBottom: 12, position: "relative" }}>
-                  <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ch.id); }} title="Delete challenge"
-                    style={{ position: "absolute", top: 14, right: 14, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 8px", color: "#ef4444", cursor: "pointer", fontSize: 13, lineHeight: 1 }}>🗑</button>
-                  <div onClick={() => { setSelectedChallenge(ch); setScreen("challenge"); }} style={{ cursor: "pointer" }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12, paddingRight: 36 }}>
-                      <div style={{ fontSize: 28 }}>{ch.emoji}</div>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
-                        <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
-                      {getCountdown(ch) && (
-                        <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
-                          {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
-                        </div>
-                      )}
-                      </div>
-                      <div style={{ marginLeft: "auto", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
-                    </div>
-                    <ProgressBar pct={pct} />
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 12, color: "#666" }}>
-                      <span>{lb.length} participant{lb.length !== 1 ? "s" : ""}</span>
-                      <span>{lb[0] ? `🥇 ${lb[0].user}` : "No entries yet"}</span>
-                    </div>
-                  </div>
+            </div>
+            {(() => {
+              const sorted = [...challenges].sort((a, b) => b.createdAt - a.createdAt);
+              const displayed = sorted.filter(ch => showArchive ? isArchived(ch) : !isArchived(ch));
+              if (displayed.length === 0) return (
+                <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>{showArchive ? "📦" : "🏋️"}</div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>{showArchive ? "No archived challenges" : "No active challenges"}</div>
+                  <div style={{ fontSize: 14 }}>{showArchive ? "Finished challenges will appear here" : "Create the first one for your squad!"}</div>
                 </div>
               );
-            })}
+              return displayed.map(ch => {
+                const lb = buildLeaderboard(ch);
+                const myEntry = lb.find(e => e.user === userName);
+                const myTotal = myEntry?.total || 0;
+                const pct = Math.min(100, (myTotal / ch.goal) * 100);
+                const newChallenge = isNew(ch);
+                return (
+                  <div key={ch.id} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 18, padding: 18, marginBottom: 12, position: "relative", opacity: showArchive ? 0.75 : 1 }}>
+                    {newChallenge && (
+                      <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ch.id); }} title="Delete challenge"
+                      style={{ position: "absolute", top: 14, right: 14, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 8px", color: "#ef4444", cursor: "pointer", fontSize: 13, lineHeight: 1 }}>🗑</button>
+                    <div onClick={() => { setSelectedChallenge(ch); setScreen("challenge"); }} style={{ cursor: "pointer" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12, paddingRight: 36 }}>
+                        <div style={{ fontSize: 28 }}>{ch.emoji}</div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
+                          <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
+                          {getCountdown(ch) && (
+                            <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
+                              {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ marginLeft: "auto", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
+                      </div>
+                      <ProgressBar pct={pct} />
+                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 12, color: "#666" }}>
+                        <span>{lb.length} participant{lb.length !== 1 ? "s" : ""}</span>
+                        <span>{lb[0] ? `🥇 ${lb[0].user}` : "No entries yet"}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
