@@ -77,6 +77,7 @@ export default function App() {
   const [logAmount, setLogAmount] = useState("");
   const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "" });
   const [reactionPicker, setReactionPicker] = useState(null); // message id
+  const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [mentionList, setMentionList] = useState([]); // users shown in @ dropdown
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -368,6 +369,32 @@ export default function App() {
     setReactionPicker(null);
   };
 
+  const handleDeleteMessage = async (msgId) => {
+    const ref = doc(db, "sweatsquad", "chat");
+    const updated = messages.map(m =>
+      m.id === msgId ? { ...m, deleted: true, text: null, logShare: null } : m
+    );
+    await setDoc(ref, { messages: updated });
+  };
+
+  const handleLeaderboardReact = async (challengeId, targetUser, emoji) => {
+    const updated = challenges.map(ch => {
+      if (ch.id !== challengeId) return ch;
+      const lbReactions = { ...(ch.lbReactions || {}) };
+      if (!lbReactions[targetUser]) lbReactions[targetUser] = {};
+      if (!lbReactions[targetUser][emoji]) lbReactions[targetUser][emoji] = [];
+      const already = lbReactions[targetUser][emoji].includes(userName);
+      if (already) {
+        lbReactions[targetUser][emoji] = lbReactions[targetUser][emoji].filter(u => u !== userName);
+        if (lbReactions[targetUser][emoji].length === 0) delete lbReactions[targetUser][emoji];
+      } else {
+        lbReactions[targetUser][emoji] = [...lbReactions[targetUser][emoji], userName];
+      }
+      return { ...ch, lbReactions };
+    });
+    await save(updated);
+  };
+
   const navItems = [
     { label: "Challenges", icon: "🏋️", s: "home" },
     { label: "Create", icon: "➕", s: "create" },
@@ -593,22 +620,56 @@ export default function App() {
               </div>
               <SectionLabel>LEADERBOARD</SectionLabel>
               {lb.length === 0 && <div style={{ color: "#555", fontSize: 14 }}>No entries yet. Be the first!</div>}
-              {lb.map((entry, i) => (
-                <div key={entry.user} style={{ display: "flex", alignItems: "center", gap: 12, background: entry.user === userName ? "rgba(249,115,22,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${entry.user === userName ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.06)"}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8 }}>
-                  <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 24, textAlign: "center" }}>
-                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+              {lb.map((entry, i) => {
+                const lbReactions = ch.lbReactions?.[entry.user] || {};
+                const hasReactions = Object.keys(lbReactions).length > 0;
+                return (
+                <div key={entry.user} style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, background: entry.user === userName ? "rgba(249,115,22,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${entry.user === userName ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.06)"}`, borderRadius: 12, padding: "12px 14px" }}>
+                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 24, textAlign: "center" }}>
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                    </div>
+                    <Avatar name={entry.user} size={34} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{entry.user}{entry.user === userName ? " (you)" : ""}</div>
+                      <div style={{ marginTop: 4 }}><ProgressBar pct={entry.pct} color={i === 0 ? "#fbbf24" : "#f97316"} /></div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#aaa", textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, color: "#fff" }}>{entry.total.toLocaleString()}</div>
+                        <div style={{ fontSize: 10 }}>{ch.unit}</div>
+                      </div>
+                      <div style={{ position: "relative" }}>
+                        <button onClick={() => setLbReactionPicker(lbReactionPicker === entry.user ? null : entry.user)}
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontSize: 14, color: "#aaa" }}>
+                          😊
+                        </button>
+                        {lbReactionPicker === entry.user && (
+                          <div style={{ position: "absolute", bottom: "100%", right: 0, background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, padding: "6px 8px", display: "flex", gap: 4, zIndex: 50, marginBottom: 4, whiteSpace: "nowrap" }}>
+                            {["🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
+                              <button key={e} onClick={() => handleLeaderboardReact(ch.id, entry.user, e)}
+                                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "2px 4px", borderRadius: 6 }}>
+                                {e}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <Avatar name={entry.user} size={34} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{entry.user}{entry.user === userName ? " (you)" : ""}</div>
-                    <div style={{ marginTop: 4 }}><ProgressBar pct={entry.pct} color={i === 0 ? "#fbbf24" : "#f97316"} /></div>
-                  </div>
-                  <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#aaa", textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, color: "#fff" }}>{entry.total.toLocaleString()}</div>
-                    <div style={{ fontSize: 10 }}>{ch.unit}</div>
-                  </div>
+                  {hasReactions && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4, paddingLeft: 8 }}>
+                      {Object.entries(lbReactions).map(([emoji, users]) => (
+                        <button key={emoji} onClick={() => handleLeaderboardReact(ch.id, entry.user, emoji)}
+                          style={{ background: users.includes(userName) ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.06)", border: `1px solid ${users.includes(userName) ? "rgba(249,115,22,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 99, padding: "2px 8px", fontSize: 13, cursor: "pointer", color: "#fff", display: "flex", alignItems: "center", gap: 4 }}>
+                          {emoji} <span style={{ fontSize: 11, color: "#aaa" }}>{users.length}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })()}
@@ -686,7 +747,18 @@ export default function App() {
                     return (
                       <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
                         {!isMe && <div style={{ fontSize: 11, color: "#666", marginBottom: 3, marginLeft: 4, fontWeight: 600 }}>{msg.user}</div>}
-                        <div style={{ position: "relative" }} onClick={() => setReactionPicker(reactionPicker === msg.id ? null : msg.id)}>
+                        {msg.deleted ? (
+                          <div style={{ color: "#444", fontSize: 13, fontStyle: "italic", padding: "6px 12px" }}>Message deleted</div>
+                        ) : (
+                        <div style={{ position: "relative" }} onClick={() => !isMe && setReactionPicker(reactionPicker === msg.id ? null : msg.id)}>
+                          {isMe && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, justifyContent: "flex-end" }}>
+                              <button onClick={() => setReactionPicker(reactionPicker === msg.id ? null : msg.id)}
+                                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, padding: "2px 6px" }} title="React">😊</button>
+                              <button onClick={() => handleDeleteMessage(msg.id)}
+                                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 13, padding: "2px 6px" }} title="Delete">🗑</button>
+                            </div>
+                          )}
                           {msg.logShare ? (
                             <div style={{ background: isMe ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.06)", border: `1px solid ${isMentioned ? "rgba(249,115,22,0.5)" : isMe ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 14, padding: "10px 14px", maxWidth: "80%", display: "flex", alignItems: "center", gap: 10 }}>
                               <div style={{ fontSize: 24 }}>{msg.logShare.emoji}</div>
@@ -713,7 +785,8 @@ export default function App() {
                             </div>
                           )}
                         </div>
-                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                        )}
+                        {!msg.deleted && msg.reactions && Object.keys(msg.reactions).length > 0 && (
                           <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap", justifyContent: isMe ? "flex-end" : "flex-start" }}>
                             {Object.entries(msg.reactions).map(([emoji, users]) => (
                               <button key={emoji} onClick={() => handleReact(msg.id, emoji)}
