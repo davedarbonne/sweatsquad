@@ -233,12 +233,13 @@ export default function App() {
       createdAt: Date.now(),
       logs: [],
     };
-    await save([...challenges, ch]);
     setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "" });
     setSelectedChallenge(null);
     setScreen("home");
+    setShowArchive(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
     showToast("Challenge created! 🎉");
+    await save([...challenges, ch]);
   };
 
   const handleSendMessage = async (logShare = null) => {
