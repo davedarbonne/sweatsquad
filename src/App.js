@@ -75,7 +75,9 @@ export default function App() {
   const [challenges, setChallenges] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [logAmount, setLogAmount] = useState("");
-  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "" });
+  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "" });
+  const [reactionPicker, setReactionPicker] = useState(null); // message id
+  const [mentionList, setMentionList] = useState([]); // users shown in @ dropdown
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newBadges, setNewBadges] = useState([]);
@@ -229,11 +231,12 @@ export default function App() {
       goal: parseFloat(newChallenge.goal),
       emoji: newChallenge.emoji,
       durationDays: newChallenge.durationDays ? parseInt(newChallenge.durationDays) : null,
+      videoUrl: newChallenge.videoUrl || null,
       createdBy: userName || "Anonymous",
       createdAt: Date.now(),
       logs: [],
     };
-    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "" });
+    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "" });
     setSelectedChallenge(null);
     setScreen("home");
     setShowArchive(false);
@@ -314,6 +317,55 @@ export default function App() {
     if (days > 0) return `${days}d ${hours}h left`;
     const mins = Math.floor((diff % 3600000) / 60000);
     return `${hours}h ${mins}m left`;
+  };
+
+  const getYouTubeId = (url) => {
+    if (!url) return null;
+    const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
+    return m ? m[1] : null;
+  };
+
+  const allUsers = () => {
+    const users = new Set();
+    challenges.forEach(ch => (ch.logs || []).forEach(l => users.add(l.user)));
+    messages.forEach(m => users.add(m.user));
+    if (userName) users.add(userName);
+    return [...users].filter(u => u !== userName);
+  };
+
+  const handleChatInput = (val) => {
+    setChatInput(val);
+    const atMatch = val.match(/@(\w*)$/);
+    if (atMatch) {
+      const q = atMatch[1].toLowerCase();
+      setMentionList(allUsers().filter(u => u.toLowerCase().startsWith(q)));
+    } else {
+      setMentionList([]);
+    }
+  };
+
+  const insertMention = (user) => {
+    const replaced = chatInput.replace(/@\w*$/, `@${user} `);
+    setChatInput(replaced);
+    setMentionList([]);
+  };
+
+  const handleReact = async (msgId, emoji) => {
+    const ref = doc(db, "sweatsquad", "chat");
+    const updated = messages.map(m => {
+      if (m.id !== msgId) return m;
+      const reactions = { ...(m.reactions || {}) };
+      if (!reactions[emoji]) reactions[emoji] = [];
+      if (reactions[emoji].includes(userName)) {
+        reactions[emoji] = reactions[emoji].filter(u => u !== userName);
+        if (reactions[emoji].length === 0) delete reactions[emoji];
+      } else {
+        reactions[emoji] = [...reactions[emoji], userName];
+      }
+      return { ...m, reactions };
+    });
+    await setDoc(ref, { messages: updated });
+    setReactionPicker(null);
   };
 
   const navItems = [
@@ -451,7 +503,17 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
-                          {getCountdown(ch) && (
+                          {ch.videoUrl && getYouTubeId(ch.videoUrl) && (
+                <div style={{ borderRadius: 14, overflow: "hidden", marginBottom: 20, position: "relative", paddingBottom: "56.25%", height: 0 }}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${getYouTubeId(ch.videoUrl)}`}
+                    title="Instructional Video"
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                    allowFullScreen
+                  />
+                </div>
+              )}
+              {getCountdown(ch) && (
                             <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
                               {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
                             </div>
@@ -571,6 +633,7 @@ export default function App() {
                 { label: "Goal (total)", key: "goal", placeholder: "e.g. 1000", type: "number" },
                 { label: "Duration (days, optional)", key: "durationDays", placeholder: "e.g. 30  —  leave blank for no limit", type: "number" },
                 { label: "Emoji", key: "emoji", placeholder: "💪" },
+                { label: "Instructional Video (YouTube URL, optional)", key: "videoUrl", placeholder: "https://youtube.com/watch?v=..." },
               ].map(f => (
                 <div key={f.key}>
                   <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>{f.label}</div>
@@ -610,21 +673,54 @@ export default function App() {
                   )}
                   {messages.map((msg) => {
                     const isMe = msg.user === userName;
+                    const isMentioned = msg.text && msg.text.includes(`@${userName}`);
+                    const renderText = (text) => {
+                      if (!text) return null;
+                      const parts = text.split(/(@\w+)/g);
+                      return parts.map((part, i) =>
+                        part.startsWith("@")
+                          ? <span key={i} style={{ fontWeight: 800, color: isMe ? "#fff" : "#f97316" }}>{part}</span>
+                          : part
+                      );
+                    };
                     return (
                       <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
                         {!isMe && <div style={{ fontSize: 11, color: "#666", marginBottom: 3, marginLeft: 4, fontWeight: 600 }}>{msg.user}</div>}
-                        {msg.logShare ? (
-                          <div style={{ background: isMe ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.06)", border: `1px solid ${isMe ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 14, padding: "10px 14px", maxWidth: "80%", display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{ fontSize: 24 }}>{msg.logShare.emoji}</div>
-                            <div>
-                              <div style={{ fontSize: 11, color: "#888", fontFamily: "'Space Mono', monospace" }}>WORKOUT LOGGED</div>
-                              <div style={{ fontWeight: 700, color: "#f97316" }}>+{msg.logShare.amount} {msg.logShare.unit}</div>
-                              <div style={{ fontSize: 12, color: "#ccc" }}>{msg.logShare.challengeName}</div>
+                        <div style={{ position: "relative" }} onClick={() => setReactionPicker(reactionPicker === msg.id ? null : msg.id)}>
+                          {msg.logShare ? (
+                            <div style={{ background: isMe ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.06)", border: `1px solid ${isMentioned ? "rgba(249,115,22,0.5)" : isMe ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.1)"}`, borderRadius: 14, padding: "10px 14px", maxWidth: "80%", display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ fontSize: 24 }}>{msg.logShare.emoji}</div>
+                              <div>
+                                <div style={{ fontSize: 11, color: "#888", fontFamily: "'Space Mono', monospace" }}>WORKOUT LOGGED</div>
+                                <div style={{ fontWeight: 700, color: "#f97316" }}>+{msg.logShare.amount} {msg.logShare.unit}</div>
+                                <div style={{ fontSize: 12, color: "#ccc" }}>{msg.logShare.challengeName}</div>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <div style={{ background: isMe ? "#f97316" : "rgba(255,255,255,0.07)", borderRadius: 16, borderBottomRightRadius: isMe ? 4 : 16, borderBottomLeftRadius: isMe ? 16 : 4, padding: "10px 14px", maxWidth: "75%", fontSize: 15, color: isMe ? "#fff" : "#f0f0f0", lineHeight: 1.4 }}>
-                            {msg.text}
+                          ) : (
+                            <div style={{ background: isMentioned ? "rgba(249,115,22,0.18)" : isMe ? "#f97316" : "rgba(255,255,255,0.07)", border: isMentioned ? "1px solid rgba(249,115,22,0.5)" : "none", borderRadius: 16, borderBottomRightRadius: isMe ? 4 : 16, borderBottomLeftRadius: isMe ? 16 : 4, padding: "10px 14px", maxWidth: "75%", fontSize: 15, color: isMe ? "#fff" : "#f0f0f0", lineHeight: 1.4 }}>
+                              {renderText(msg.text)}
+                            </div>
+                          )}
+                          {reactionPicker === msg.id && (
+                            <div style={{ position: "absolute", bottom: "100%", left: isMe ? "auto" : 0, right: isMe ? 0 : "auto", background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, padding: "6px 8px", display: "flex", gap: 4, zIndex: 50, marginBottom: 4 }}>
+                              {["🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
+                                <button key={e} onClick={() => handleReact(msg.id, e)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "2px 4px", borderRadius: 6, transition: "background 0.15s" }}
+                                  onMouseEnter={ev => ev.target.style.background = "rgba(255,255,255,0.1)"}
+                                  onMouseLeave={ev => ev.target.style.background = "none"}>
+                                  {e}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                          <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap", justifyContent: isMe ? "flex-end" : "flex-start" }}>
+                            {Object.entries(msg.reactions).map(([emoji, users]) => (
+                              <button key={emoji} onClick={() => handleReact(msg.id, emoji)}
+                                style={{ background: users.includes(userName) ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.06)", border: `1px solid ${users.includes(userName) ? "rgba(249,115,22,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 99, padding: "2px 8px", fontSize: 13, cursor: "pointer", color: "#fff", display: "flex", alignItems: "center", gap: 4 }}>
+                                {emoji} <span style={{ fontSize: 11, color: "#aaa" }}>{users.length}</span>
+                              </button>
+                            ))}
                           </div>
                         )}
                         <div style={{ fontSize: 10, color: "#444", marginTop: 2, marginLeft: 4, marginRight: 4 }}>
@@ -635,15 +731,28 @@ export default function App() {
                   })}
                 </div>
                 {/* Input */}
-                <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-                  <input
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleSendMessage()}
-                    placeholder="Say something..."
-                    style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 24, padding: "10px 16px", color: "#fff", fontSize: 15, outline: "none" }}
-                  />
-                  <button onClick={() => handleSendMessage()} style={{ background: "#f97316", border: "none", borderRadius: "50%", width: 44, height: 44, color: "#fff", cursor: "pointer", fontSize: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
+                <div style={{ position: "relative" }}>
+                  {mentionList.length > 0 && (
+                    <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, marginBottom: 6, overflow: "hidden", zIndex: 50 }}>
+                      {mentionList.map(u => (
+                        <button key={u} onClick={() => insertMention(u)} style={{ width: "100%", background: "none", border: "none", padding: "10px 16px", color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 14, display: "flex", alignItems: "center", gap: 10 }}
+                          onMouseEnter={e => e.currentTarget.style.background = "rgba(249,115,22,0.1)"}
+                          onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                          <Avatar name={u} size={24} /> @{u}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                    <input
+                      value={chatInput}
+                      onChange={e => handleChatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && mentionList.length === 0) handleSendMessage(); }}
+                      placeholder="Say something... (type @ to mention)"
+                      style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 24, padding: "10px 16px", color: "#fff", fontSize: 15, outline: "none" }}
+                    />
+                    <button onClick={() => handleSendMessage()} style={{ background: "#f97316", border: "none", borderRadius: "50%", width: 44, height: 44, color: "#fff", cursor: "pointer", fontSize: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
+                  </div>
                 </div>
               </>
             )}
