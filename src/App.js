@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
@@ -78,6 +78,9 @@ export default function App() {
   const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "" });
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
+  const [mentionAlert, setMentionAlert] = useState(null);
+  const [lastSeenMentionTs, setLastSeenMentionTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastmention") || "0"));
+  const messagesEndRef = useRef(null);
   const [mentionList, setMentionList] = useState([]); // users shown in @ dropdown
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +124,22 @@ export default function App() {
     });
     return () => unsub();
   }, [lastReadTs, userName]); // eslint-disable-line
+
+  // Scroll chat to bottom when screen is chat or messages change
+  useEffect(() => {
+    if (screen === "chat" && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [screen, messages]);
+
+  // Show banner if someone @mentions current user
+  useEffect(() => {
+    if (!userName) return;
+    const newMention = [...messages].reverse().find(
+      m => !m.deleted && m.text && m.text.includes(`@${userName}`) && m.user !== userName && m.ts > lastSeenMentionTs
+    );
+    if (newMention) setMentionAlert(newMention);
+  }, [messages, userName]); // eslint-disable-line
 
   // Update selectedChallenge in real-time when challenges change
   useEffect(() => {
@@ -262,6 +281,15 @@ export default function App() {
     await setDoc(ref, { messages: updated });
     setChatInput("");
     setShareLog(null);
+  };
+
+  const dismissMentionAlert = () => {
+    if (mentionAlert) {
+      const ts = mentionAlert.ts;
+      setLastSeenMentionTs(ts);
+      localStorage.setItem("sweatsquad_lastmention", ts.toString());
+    }
+    setMentionAlert(null);
   };
 
   const markChatRead = () => {
@@ -423,6 +451,30 @@ export default function App() {
 
       {toast && (
         <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: toast.type === "error" ? "#7f1d1d" : "#14532d", border: `1px solid ${toast.type === "error" ? "#f87171" : "#4ade80"}`, color: "#fff", borderRadius: 12, padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 998, whiteSpace: "nowrap" }}>{toast.msg}</div>
+      )}
+
+      {mentionAlert && screen !== "chat" && (
+        <div style={{
+          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+          background: "#1a1a2e", border: "1.5px solid #f97316",
+          borderRadius: 16, padding: "12px 16px", zIndex: 997,
+          display: "flex", alignItems: "center", gap: 12,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.6)", maxWidth: 360, width: "calc(100% - 32px)"
+        }}>
+          <Avatar name={mentionAlert.user} size={32} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: "#f97316", fontWeight: 700 }}>{mentionAlert.user} mentioned you 👋</div>
+            <div style={{ fontSize: 13, color: "#ccc", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mentionAlert.text}</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button onClick={() => { setScreen("chat"); setSelectedChallenge(null); markChatRead(); dismissMentionAlert(); }}
+              style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+              View
+            </button>
+            <button onClick={dismissMentionAlert}
+              style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>×</button>
+          </div>
+        </div>
       )}
 
       {shareLog && (
@@ -802,6 +854,7 @@ export default function App() {
                       </div>
                     );
                   })}
+                  <div ref={messagesEndRef} />
                 </div>
                 {/* Input */}
                 <div style={{ position: "relative" }}>
@@ -916,7 +969,7 @@ export default function App() {
       {/* Bottom nav */}
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(13,13,15,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.07)", padding: "10px 0 16px", display: "flex", justifyContent: "center", zIndex: 100 }}>
         {navItems.map(item => (
-          <button key={item.s} onClick={() => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") markChatRead(); }}
+          <button key={item.s} onClick={() => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") { markChatRead(); dismissMentionAlert(); } }}
             style={{ background: "none", border: "none", color: screen === item.s ? "#f97316" : "#555", cursor: "pointer", padding: "6px 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 1, transition: "color 0.2s", position: "relative" }}>
             <span style={{ fontSize: 22, position: "relative" }}>
               {item.icon}
