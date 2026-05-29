@@ -75,7 +75,7 @@ export default function App() {
   const [challenges, setChallenges] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [logAmount, setLogAmount] = useState("");
-  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "" });
+  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "" });
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [mentionAlert, setMentionAlert] = useState(null);
@@ -206,6 +206,47 @@ export default function App() {
     return BADGE_DEFS.filter(b => earned.has(b.id));
   };
 
+  const getPoints = (user, allChallenges) => {
+    let points = 0;
+    // Challenge completion points: 1st=5, 2nd=4, 3rd=3, rest=2
+    allChallenges.forEach(ch => {
+      const completers = [];
+      const userTotals = {};
+      (ch.logs || []).forEach(l => { userTotals[l.user] = (userTotals[l.user] || 0) + l.amount; });
+      // Sort by first timestamp they completed (earliest = higher rank)
+      Object.entries(userTotals).forEach(([u, total]) => {
+        if (total >= ch.goal) {
+          const logs = (ch.logs || []).filter(l => l.user === u);
+          let running = 0;
+          let completedTs = null;
+          for (const log of logs.sort((a,b) => a.ts - b.ts)) {
+            running += log.amount;
+            if (running >= ch.goal) { completedTs = log.ts; break; }
+          }
+          completers.push({ user: u, completedTs });
+        }
+      });
+      completers.sort((a, b) => a.completedTs - b.completedTs);
+      const rank = completers.findIndex(c => c.user === user);
+      if (rank === 0) points += 5;
+      else if (rank === 1) points += 4;
+      else if (rank === 2) points += 3;
+      else if (rank > 2) points += 2;
+    });
+    // Badge points: 1 per badge
+    const badges = getUserBadges(user, allChallenges);
+    points += badges.length;
+    return points;
+  };
+
+  const getSquadLeaderboard = (allChallenges) => {
+    const users = new Set();
+    allChallenges.forEach(ch => (ch.logs || []).forEach(l => users.add(l.user)));
+    return [...users]
+      .map(u => ({ user: u, points: getPoints(u, allChallenges) }))
+      .sort((a, b) => b.points - a.points);
+  };
+
   const getMyHistory = () => {
     const all = [];
     challenges.forEach(ch => {
@@ -252,11 +293,12 @@ export default function App() {
       emoji: newChallenge.emoji,
       durationDays: newChallenge.durationDays ? parseInt(newChallenge.durationDays) : null,
       videoUrl: newChallenge.videoUrl || null,
+      description: newChallenge.description || null,
       createdBy: userName || "Anonymous",
       createdAt: Date.now(),
       logs: [],
     };
-    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "" });
+    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "" });
     setSelectedChallenge(null);
     setScreen("home");
     setShowArchive(false);
@@ -427,6 +469,7 @@ export default function App() {
     { label: "Challenges", icon: "🏋️", s: "home" },
     { label: "Create", icon: "➕", s: "create" },
     { label: "Chat", icon: "💬", s: "chat" },
+    { label: "Points", icon: "🏆", s: "points" },
     { label: "My Stats", icon: "📊", s: "profile" },
   ];
 
@@ -582,7 +625,13 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
-                          {ch.videoUrl && getYouTubeId(ch.videoUrl) && (
+                          {ch.description && (
+                <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 20, fontSize: 14, color: "#ccc", lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>DESCRIPTION</div>
+                  {ch.description}
+                </div>
+              )}
+              {ch.videoUrl && getYouTubeId(ch.videoUrl) && (
                 <div style={{ borderRadius: 14, overflow: "hidden", marginBottom: 20, position: "relative", paddingBottom: "56.25%", height: 0 }}>
                   <iframe
                     src={`https://www.youtube.com/embed/${getYouTubeId(ch.videoUrl)}`}
@@ -754,6 +803,13 @@ export default function App() {
                     style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
                 </div>
               ))}
+              <div>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Description (optional)</div>
+                <textarea value={newChallenge.description} onChange={e => setNewChallenge(p => ({ ...p, description: e.target.value }))}
+                  placeholder="e.g. Do as many pushups as you can each day. Log your daily total. Form matters!"
+                  rows={3}
+                  style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }} />
+              </div>
               <button onClick={handleCreateChallenge} style={{ background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, marginTop: 8, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2 }}>
                 LAUNCH CHALLENGE 🚀
               </button>
@@ -885,6 +941,60 @@ export default function App() {
           </div>
         )}
 
+        {/* POINTS / SQUAD LEADERBOARD */}
+        {screen === "points" && (
+          <div>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, letterSpacing: 2, marginBottom: 4 }}>SQUAD POINTS 🏆</div>
+            <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 20 }}>OVERALL RANKINGS</div>
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 16, marginBottom: 24 }}>
+              <div style={{ fontSize: 12, color: "#888", marginBottom: 12, lineHeight: 1.6 }}>
+                🥇 1st to finish = <span style={{ color: "#fbbf24", fontWeight: 700 }}>5 pts</span> &nbsp;·&nbsp;
+                🥈 2nd = <span style={{ color: "#94a3b8", fontWeight: 700 }}>4 pts</span> &nbsp;·&nbsp;
+                🥉 3rd = <span style={{ color: "#cd7c32", fontWeight: 700 }}>3 pts</span> &nbsp;·&nbsp;
+                ✅ Finisher = <span style={{ color: "#fff", fontWeight: 700 }}>2 pts</span> &nbsp;·&nbsp;
+                🏅 Each badge = <span style={{ color: "#fff", fontWeight: 700 }}>1 pt</span>
+              </div>
+            </div>
+            {(() => {
+              const squad = getSquadLeaderboard(challenges);
+              if (squad.length === 0) return (
+                <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🏆</div>
+                  <div style={{ fontWeight: 600 }}>No points yet</div>
+                  <div style={{ fontSize: 14, marginTop: 6 }}>Complete challenges to earn points!</div>
+                </div>
+              );
+              return squad.map((entry, i) => {
+                const isMe = entry.user === userName;
+                const badges = getUserBadges(entry.user, challenges);
+                const completedCount = challenges.filter(ch => {
+                  const t = (ch.logs || []).filter(l => l.user === entry.user).reduce((a, l) => a + l.amount, 0);
+                  return t >= ch.goal;
+                }).length;
+                return (
+                  <div key={entry.user} style={{ display: "flex", alignItems: "center", gap: 12, background: isMe ? "rgba(249,115,22,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${isMe ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.06)"}`, borderRadius: 14, padding: "14px 16px", marginBottom: 10 }}>
+                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 28, textAlign: "center", flexShrink: 0 }}>
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                    </div>
+                    <Avatar name={entry.user} size={40} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{entry.user}{isMe ? " (you)" : ""}</div>
+                      <div style={{ fontSize: 11, color: "#666", marginTop: 3, display: "flex", gap: 10 }}>
+                        <span>✅ {completedCount} challenge{completedCount !== 1 ? "s" : ""}</span>
+                        <span>🏅 {badges.length} badge{badges.length !== 1 ? "s" : ""}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 28, color: i === 0 ? "#fbbf24" : "#f97316", lineHeight: 1 }}>{entry.points}</div>
+                      <div style={{ fontSize: 10, color: "#666", fontFamily: "'Space Mono', monospace" }}>PTS</div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
+
         {/* PROFILE / STATS */}
         {screen === "profile" && (
           <div>
@@ -913,7 +1023,10 @@ export default function App() {
                     <Avatar name={userName} size={56} />
                     <div>
                       <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 2 }}>{userName}</div>
-                      <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>{badges.length} badge{badges.length !== 1 ? "s" : ""} earned</div>
+                      <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                        <div style={{ fontSize: 13, color: "#888" }}>{badges.length} badge{badges.length !== 1 ? "s" : ""}</div>
+                        <div style={{ fontSize: 13, color: "#f97316", fontWeight: 700 }}>🏆 {getPoints(userName, challenges)} pts</div>
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
