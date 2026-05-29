@@ -1080,10 +1080,10 @@ export default function App() {
       </div>
 
       {/* Bottom nav */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(13,13,15,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.07)", padding: "8px 0 14px", display: "flex", justifyContent: "space-around", zIndex: 100 }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(13,13,15,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.07)", padding: "10px 16px 20px", display: "flex", justifyContent: "space-between", zIndex: 100 }}>
         {navItems.map(item => (
           <button key={item.s} onClick={() => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") { markChatRead(); dismissMentionAlert(); } }}
-            style={{ background: "none", border: "none", color: screen === item.s ? "#f97316" : "#555", cursor: "pointer", padding: "4px 0", flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
+            style={{ background: "none", border: "none", color: screen === item.s ? "#f97316" : "#555", cursor: "pointer", padding: "4px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
             <span style={{ fontSize: 18, position: "relative" }}>
               {item.icon}
               {item.s === "chat" && unreadCount > 0 && (
