@@ -682,17 +682,7 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
-              {ch.videoUrl && getYouTubeId(ch.videoUrl) && (
-                <div style={{ borderRadius: 14, overflow: "hidden", marginBottom: 20, position: "relative", paddingBottom: "56.25%", height: 0 }}>
-                  <iframe
-                    src={`https://www.youtube.com/embed/${getYouTubeId(ch.videoUrl)}`}
-                    title="Instructional Video"
-                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
-                    allowFullScreen
-                  />
-                </div>
-              )}
-              {getCountdown(ch) && (
+                          {getCountdown(ch) && (
                             <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
                               {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
                             </div>
