@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+
+const VAPID_KEY = "BObS3r8ohcb3-voKgEidcDFOnHaD8IayMPQrbaq9hEGFgus_0R7_9BfRomHU5ODLsBMJw6_F0Nc1v5CYQIz6sgA";
 
 const BADGE_DEFS = [
   { id: "first_blood", emoji: "🔥", label: "First Rep", desc: "Log your first entry" },
@@ -79,6 +82,8 @@ export default function App() {
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [mentionAlert, setMentionAlert] = useState(null);
+  const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
+  const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => localStorage.getItem("sweatsquad_notif_dismissed") === "true");
   const [lastSeenMentionTs, setLastSeenMentionTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastmention") || "0"));
   const messagesEndRef = useRef(null);
   const [mentionList, setMentionList] = useState([]); // users shown in @ dropdown
@@ -124,6 +129,34 @@ export default function App() {
     });
     return () => unsub();
   }, [lastReadTs, userName]); // eslint-disable-line
+
+  // Request notification permission and save FCM token
+  const setupNotifications = async () => {
+    if (!userName) return;
+    try {
+      const permission = await Notification.requestPermission();
+      setNotifPermission(permission);
+      if (permission !== "granted") return;
+      const messaging = getMessaging();
+      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+      if (token) {
+        // Save token mapped to username in Firestore
+        const { collection, addDoc, query, where, getDocs, deleteDoc } = await import("firebase/firestore");
+        const tokensRef = collection(db, "fcmTokens");
+        // Remove old tokens for this user+device combo
+        const existing = await getDocs(query(tokensRef, where("token", "==", token)));
+        existing.forEach(d => deleteDoc(d.ref));
+        await addDoc(tokensRef, { username: userName, token, updatedAt: Date.now() });
+      }
+      // Handle foreground messages
+      onMessage(messaging, (payload) => {
+        const { title, body } = payload.notification;
+        showToast(`🔔 ${title}: ${body}`);
+      });
+    } catch (err) {
+      console.log("Notification setup failed:", err);
+    }
+  };
 
   // Scroll chat to bottom when screen is chat or messages change
   useEffect(() => {
@@ -494,6 +527,30 @@ export default function App() {
 
       {toast && (
         <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: toast.type === "error" ? "#7f1d1d" : "#14532d", border: `1px solid ${toast.type === "error" ? "#f87171" : "#4ade80"}`, color: "#fff", borderRadius: 12, padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 998, whiteSpace: "nowrap" }}>{toast.msg}</div>
+      )}
+
+      {!notifBannerDismissed && notifPermission === "default" && userName && (
+        <div style={{
+          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+          background: "#1a1a2e", border: "1.5px solid rgba(249,115,22,0.5)",
+          borderRadius: 16, padding: "12px 16px", zIndex: 996,
+          display: "flex", alignItems: "center", gap: 12,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.6)", maxWidth: 360, width: "calc(100% - 32px)"
+        }}>
+          <span style={{ fontSize: 24 }}>🔔</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Enable notifications?</div>
+            <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>Get notified when someone mentions you in chat</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button onClick={setupNotifications}
+              style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+              Allow
+            </button>
+            <button onClick={() => { setNotifBannerDismissed(true); localStorage.setItem("sweatsquad_notif_dismissed", "true"); }}
+              style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>×</button>
+          </div>
+        </div>
       )}
 
       {mentionAlert && screen !== "chat" && (
