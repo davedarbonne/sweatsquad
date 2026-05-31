@@ -6,11 +6,31 @@ import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 const VAPID_KEY = "BObS3r8ohcb3-voKgEidcDFOnHaD8IayMPQrbaq9hEGFgus_0R7_9BfRomHU5ODLsBMJw6_F0Nc1v5CYQIz6sgA";
 
 const BADGE_DEFS = [
+  // Original
   { id: "first_blood", emoji: "🔥", label: "First Rep", desc: "Log your first entry" },
   { id: "streak3", emoji: "⚡", label: "On Fire", desc: "Log 3 days in a row" },
   { id: "finisher", emoji: "🏆", label: "Finisher", desc: "Complete a challenge" },
   { id: "podium", emoji: "🥇", label: "Top Dog", desc: "Reach #1 on the leaderboard" },
-  { id: "centurion", emoji: "💯", label: "Centurion", desc: "Log 100 total reps/mins/steps" },
+  { id: "centurion", emoji: "💯", label: "Centurion", desc: "Log 100 total reps/units" },
+  // Activity
+  { id: "early_bird", emoji: "🌅", label: "Early Bird", desc: "Log a workout before 7 AM" },
+  { id: "week_warrior", emoji: "🔥", label: "Week Warrior", desc: "Log every day for 7 days straight" },
+  { id: "centurion_x", emoji: "💥", label: "Centurion X", desc: "Log 1,000 total reps/units" },
+  { id: "sharpshooter", emoji: "🎯", label: "Sharpshooter", desc: "Complete a challenge within 24h of deadline" },
+  // Social
+  { id: "welcome", emoji: "👋", label: "Welcome to the Squad", desc: "Log anything for the first time" },
+  { id: "trash_talker", emoji: "🗣️", label: "Trash Talker", desc: "Send 10 chat messages" },
+  { id: "team_player", emoji: "🤝", label: "Team Player", desc: "Accept 5 challenges" },
+  { id: "hype_man", emoji: "📣", label: "Hype Man", desc: "React to 10 leaderboard entries" },
+  // Challenge
+  { id: "speed_demon", emoji: "⚡", label: "Speed Demon", desc: "Finish a challenge in the first half of its duration" },
+  { id: "hat_trick", emoji: "🏅", label: "Hat Trick", desc: "Complete 3 challenges" },
+  { id: "legend", emoji: "👑", label: "Legend", desc: "Complete 10 challenges" },
+  { id: "podium_regular", emoji: "🎖️", label: "Podium Regular", desc: "Finish top 3 on 3 different challenges" },
+  // Fun
+  { id: "better_late", emoji: "🐢", label: "Better Late Than Never", desc: "Complete a challenge on the last day" },
+  { id: "overachiever", emoji: "🤯", label: "Overachiever", desc: "Log double the goal on any challenge" },
+  { id: "on_a_roll", emoji: "🌊", label: "On a Roll", desc: "Log 5 days in a row across any challenges" },
 ];
 
 const CHALLENGE_TEMPLATES = [
@@ -211,32 +231,95 @@ export default function App() {
       .sort((a, b) => b.total - a.total);
   };
 
-  const getUserBadges = (user, allChallenges) => {
+  const getUserBadges = (user, allChallenges, allMessages = [], lbReactionCount = 0) => {
     const earned = new Set();
     let totalLogged = 0;
-    let rank1 = false;
-    let everFinished = false;
+    let finishedCount = 0;
+    let podiumCount = 0;
+    let acceptedCount = (allChallenges.filter(ch => (ch.accepted || []).includes(user))).length;
+
+    // Collect all log dates across all challenges for streak calc
+    const allLogDates = new Set();
 
     allChallenges.forEach(ch => {
       const entries = (ch.logs || []).filter(l => l.user === user);
       const total = entries.reduce((a, l) => a + l.amount, 0);
       totalLogged += total;
-      if (total >= ch.goal) everFinished = true;
-      const leaderboard = buildLeaderboard(ch);
-      if (leaderboard[0]?.user === user && leaderboard[0]?.total > 0) rank1 = true;
-      const days = [...new Set(entries.map(l => l.date))].sort();
-      let streak = 1;
-      for (let i = 1; i < days.length; i++) {
-        const diff = (new Date(days[i]) - new Date(days[i - 1])) / 86400000;
-        streak = diff === 1 ? streak + 1 : 1;
-        if (streak >= 3) { earned.add("streak3"); break; }
+      entries.forEach(l => allLogDates.add(l.date));
+
+      // Early bird: any log before 7 AM
+      entries.forEach(l => {
+        const hour = new Date(l.ts).getHours();
+        if (hour < 7) earned.add("early_bird");
+      });
+
+      if (total >= ch.goal) {
+        finishedCount++;
+        earned.add("finisher");
+
+        // Overachiever: logged double the goal
+        if (total >= ch.goal * 2) earned.add("overachiever");
+
+        // Better late than never: completed on last day of duration
+        if (ch.durationDays) {
+          const endTs = ch.createdAt + ch.durationDays * 86400000;
+          const logs = entries.sort((a,b) => a.ts - b.ts);
+          let running = 0;
+          for (const log of logs) {
+            running += log.amount;
+            if (running >= ch.goal) {
+              const daysLeft = (endTs - log.ts) / 86400000;
+              if (daysLeft <= 1) earned.add("better_late");
+              // Speed demon: finished in first half of duration
+              const elapsed = log.ts - ch.createdAt;
+              const halfDuration = (ch.durationDays * 86400000) / 2;
+              if (elapsed <= halfDuration) earned.add("speed_demon");
+              // Sharpshooter: finished within 24h of deadline
+              if (daysLeft <= 1 && daysLeft >= 0) earned.add("sharpshooter");
+              break;
+            }
+          }
+        }
       }
-      if (entries.length > 0) earned.add("first_blood");
+
+      // Leaderboard checks
+      const leaderboard = buildLeaderboard(ch);
+      if (leaderboard[0]?.user === user && leaderboard[0]?.total > 0) earned.add("podium");
+      const rank = leaderboard.findIndex(e => e.user === user);
+      if (rank >= 0 && rank <= 2 && leaderboard[rank].total > 0) podiumCount++;
     });
 
-    if (everFinished) earned.add("finisher");
-    if (rank1) earned.add("podium");
+    // Streak checks across all challenges
+    const sortedDays = [...allLogDates].sort();
+    let streak = 1;
+    let maxStreak = sortedDays.length > 0 ? 1 : 0;
+    for (let i = 1; i < sortedDays.length; i++) {
+      const diff = (new Date(sortedDays[i]) - new Date(sortedDays[i-1])) / 86400000;
+      if (diff === 1) { streak++; maxStreak = Math.max(maxStreak, streak); }
+      else streak = 1;
+    }
+    if (maxStreak >= 3) earned.add("streak3");
+    if (maxStreak >= 5) earned.add("on_a_roll");
+    if (maxStreak >= 7) earned.add("week_warrior");
+
+    // Totals
+    if (totalLogged > 0) { earned.add("first_blood"); earned.add("welcome"); }
     if (totalLogged >= 100) earned.add("centurion");
+    if (totalLogged >= 1000) earned.add("centurion_x");
+
+    // Challenge counts
+    if (finishedCount >= 3) earned.add("hat_trick");
+    if (finishedCount >= 10) earned.add("legend");
+    if (podiumCount >= 3) earned.add("podium_regular");
+    if (acceptedCount >= 5) earned.add("team_player");
+
+    // Social: chat messages
+    const userMessages = allMessages.filter(m => m.user === user && !m.deleted);
+    if (userMessages.length >= 10) earned.add("trash_talker");
+
+    // Hype man: lb reactions
+    if (lbReactionCount >= 10) earned.add("hype_man");
+
     return BADGE_DEFS.filter(b => earned.has(b.id));
   };
 
@@ -658,7 +741,12 @@ export default function App() {
         {screen === "home" && (
           <div>
             {userName && (() => {
-              const badges = getUserBadges(userName, challenges);
+              const lbReactionCount = challenges.reduce((total, ch) => {
+                  const reactions = ch.lbReactions || {};
+                  return total + Object.values(reactions).reduce((t, emojiMap) =>
+                    t + Object.values(emojiMap).filter(users => users.includes(userName)).length, 0);
+                }, 0);
+                const badges = getUserBadges(userName, challenges, messages, lbReactionCount);
               return badges.length > 0 ? (
                 <div style={{ marginBottom: 20 }}>
                   <SectionLabel>YOUR BADGES</SectionLabel>
@@ -1092,7 +1180,12 @@ export default function App() {
               </div>
             ) : (() => {
               const history = getMyHistory();
-              const badges = getUserBadges(userName, challenges);
+              const lbReactionCount = challenges.reduce((total, ch) => {
+                  const reactions = ch.lbReactions || {};
+                  return total + Object.values(reactions).reduce((t, emojiMap) =>
+                    t + Object.values(emojiMap).filter(users => users.includes(userName)).length, 0);
+                }, 0);
+                const badges = getUserBadges(userName, challenges, messages, lbReactionCount);
               const totalReps = history.reduce((a, l) => a + l.amount, 0);
               const activeChallenges = challenges.filter(ch => (ch.logs || []).filter(l => l.user === userName).reduce((a, l) => a + l.amount, 0) > 0);
               const completedChallenges = challenges.filter(ch => {
