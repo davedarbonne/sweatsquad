@@ -101,6 +101,7 @@ export default function App() {
   const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "" });
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
+  const [badgesExpanded, setBadgesExpanded] = useState(false);
   const [mentionAlert, setMentionAlert] = useState(null);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => localStorage.getItem("sweatsquad_notif_dismissed") === "true");
@@ -749,8 +750,13 @@ export default function App() {
                 const badges = getUserBadges(userName, challenges, messages, lbReactionCount);
               return badges.length > 0 ? (
                 <div style={{ marginBottom: 20 }}>
-                  <SectionLabel>YOUR BADGES</SectionLabel>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} />)}</div>
+                  <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
+                    <SectionLabel>YOUR BADGES ({badges.length})</SectionLabel>
+                    <span style={{ color: "#f97316", fontSize: 18, marginTop: -10 }}>{badgesExpanded ? "▲" : "▼"}</span>
+                  </button>
+                  {badgesExpanded && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} />)}</div>
+                  )}
                 </div>
               ) : null;
             })()}
@@ -1223,8 +1229,13 @@ export default function App() {
                   </div>
                   {badges.length > 0 && (
                     <div style={{ marginBottom: 24 }}>
-                      <SectionLabel>YOUR BADGES</SectionLabel>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} />)}</div>
+                      <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
+                        <SectionLabel>YOUR BADGES ({badges.length})</SectionLabel>
+                        <span style={{ color: "#f97316", fontSize: 18, marginTop: -10 }}>{badgesExpanded ? "▲" : "▼"}</span>
+                      </button>
+                      {badgesExpanded && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} />)}</div>
+                      )}
                     </div>
                   )}
                   <SectionLabel>ACTIVITY HISTORY</SectionLabel>
