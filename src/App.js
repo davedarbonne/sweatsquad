@@ -146,7 +146,8 @@ export default function App() {
         // Remove old tokens for this user+device combo
         const existing = await getDocs(query(tokensRef, where("token", "==", token)));
         existing.forEach(d => deleteDoc(d.ref));
-        await addDoc(tokensRef, { username: userName, token, updatedAt: Date.now() });
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        await addDoc(tokensRef, { username: userName, token, updatedAt: Date.now(), timezone });
       }
       // Handle foreground messages
       onMessage(messaging, (payload) => {
