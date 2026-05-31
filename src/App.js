@@ -290,6 +290,18 @@ export default function App() {
     return all.sort((a, b) => b.ts - a.ts);
   };
 
+  const handleAccept = async (challengeId) => {
+    if (!userName) { showToast("Set your name first!", "error"); return; }
+    const updated = challenges.map(ch => {
+      if (ch.id !== challengeId) return ch;
+      const accepted = ch.accepted || [];
+      if (accepted.includes(userName)) return ch;
+      return { ...ch, accepted: [...accepted, userName] };
+    });
+    await save(updated);
+    showToast("Challenge accepted! 💪");
+  };
+
   const handleLog = async () => {
     if (!userName) { showToast("Set your name first!", "error"); return; }
     if (isExpired(selectedChallenge)) { showToast("This challenge has ended!", "error"); return; }
@@ -298,10 +310,16 @@ export default function App() {
 
     const today = new Date().toISOString().slice(0, 10);
     const entry = { user: userName, amount: amt, date: today, ts: Date.now() };
+    // Auto-accept on first log
+    const alreadyAccepted = (selectedChallenge.accepted || []).includes(userName);
 
     const prevBadges = getUserBadges(userName, challenges);
     const updated = challenges.map(ch =>
-      ch.id === selectedChallenge.id ? { ...ch, logs: [...(ch.logs || []), entry] } : ch
+      ch.id === selectedChallenge.id ? {
+        ...ch,
+        logs: [...(ch.logs || []), entry],
+        accepted: alreadyAccepted ? (ch.accepted || []) : [...(ch.accepted || []), userName]
+      } : ch
     );
     await save(updated);
 
@@ -400,6 +418,11 @@ export default function App() {
   const isExpired = (ch) => {
     const end = getEndTs(ch);
     return end ? Date.now() > end : false;
+  };
+
+  const isAccepted = (ch) => {
+    if (!userName) return false;
+    return (ch.accepted || []).includes(userName);
   };
 
   const isNew = (ch) => {
@@ -654,7 +677,12 @@ export default function App() {
               </div>
             </div>
             {(() => {
-              const sorted = [...challenges].sort((a, b) => b.createdAt - a.createdAt);
+              const sorted = [...challenges].sort((a, b) => {
+                const aAccepted = (a.accepted || []).includes(userName) ? 1 : 0;
+                const bAccepted = (b.accepted || []).includes(userName) ? 1 : 0;
+                if (bAccepted !== aAccepted) return bAccepted - aAccepted;
+                return b.createdAt - a.createdAt;
+              });
               const displayed = sorted.filter(ch => showArchive ? isArchived(ch) : !isArchived(ch));
               if (displayed.length === 0) return (
                 <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
@@ -670,7 +698,7 @@ export default function App() {
                 const pct = Math.min(100, (myTotal / ch.goal) * 100);
                 const newChallenge = isNew(ch);
                 return (
-                  <div key={ch.id} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 18, padding: 18, marginBottom: 12, position: "relative", opacity: showArchive ? 0.75 : 1 }}>
+                  <div key={ch.id} style={{ background: isAccepted(ch) ? "rgba(74,222,128,0.04)" : "rgba(255,255,255,0.04)", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 18, padding: 18, marginBottom: 12, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 12px rgba(74,222,128,0.08)" : "none" }}>
                     {newChallenge && (
                       <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
                     )}
@@ -682,23 +710,7 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
-                          {ch.description && (
-                <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 20, fontSize: 14, color: "#ccc", lineHeight: 1.6 }}>
-                  <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>DESCRIPTION</div>
-                  {ch.description}
-                </div>
-              )}
-              {ch.videoUrl && getYouTubeId(ch.videoUrl) && (
-                <div style={{ borderRadius: 14, overflow: "hidden", marginBottom: 20, position: "relative", paddingBottom: "56.25%", height: 0 }}>
-                  <iframe
-                    src={`https://www.youtube.com/embed/${getYouTubeId(ch.videoUrl)}`}
-                    title="Instructional Video"
-                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
-                    allowFullScreen
-                  />
-                </div>
-              )}
-              {getCountdown(ch) && (
+                          {getCountdown(ch) && (
                             <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
                               {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
                             </div>
@@ -737,6 +749,23 @@ export default function App() {
                 </div>
                 <button onClick={() => setDeleteConfirm(ch.id)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "8px 10px", color: "#ef4444", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>🗑</button>
               </div>
+              {ch.description && (
+                <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 16, fontSize: 14, color: "#ccc", lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>DESCRIPTION</div>
+                  {ch.description}
+                </div>
+              )}
+              {!isAccepted(ch) && !isExpired(ch) && !completed && userName && (
+                <button onClick={() => handleAccept(ch.id)} style={{ width: "100%", background: "rgba(74,222,128,0.1)", border: "1.5px solid rgba(74,222,128,0.4)", borderRadius: 14, padding: "14px", color: "#4ade80", fontWeight: 800, cursor: "pointer", fontSize: 15, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 16 }}>
+                  ✅ ACCEPT CHALLENGE
+                </button>
+              )}
+              {isAccepted(ch) && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: 14, padding: "10px 16px", marginBottom: 16 }}>
+                  <span style={{ fontSize: 16 }}>✅</span>
+                  <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, fontWeight: 700, color: "#4ade80" }}>YOU ACCEPTED THIS CHALLENGE</span>
+                </div>
+              )}
               {getCountdown(ch) && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16, background: isExpired(ch) ? "rgba(239,68,68,0.08)" : "rgba(249,115,22,0.07)", border: `1px solid ${isExpired(ch) ? "rgba(239,68,68,0.3)" : "rgba(249,115,22,0.2)"}`, borderRadius: 12, padding: "10px 16px" }}>
                   <span style={{ fontSize: 16 }}>{isExpired(ch) ? "🔴" : "⏱"}</span>
