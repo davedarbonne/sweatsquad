@@ -515,8 +515,17 @@ export default function App() {
   };
 
   const isArchived = (ch) => {
-    const allDone = buildLeaderboard(ch).every(e => e.total >= ch.goal);
-    return isExpired(ch) || (allDone && buildLeaderboard(ch).length > 0);
+    const end = getEndTs(ch);
+    // If timed challenge, give 24h grace period after expiry before archiving
+    if (end) {
+      const gracePeriod = end + 86400000;
+      if (Date.now() < gracePeriod) return false;
+      return true;
+    }
+    // No duration: archive when everyone has completed it
+    const lb = buildLeaderboard(ch);
+    const allDone = lb.length > 0 && lb.every(e => e.total >= ch.goal);
+    return allDone;
   };
 
   const getCountdown = (ch) => {
@@ -844,6 +853,12 @@ export default function App() {
                 </div>
                 <button onClick={() => setDeleteConfirm(ch.id)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "8px 10px", color: "#ef4444", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>🗑</button>
               </div>
+              {ch.createdBy && (
+                <div style={{ textAlign: "center", marginBottom: 16 }}>
+                  <span style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace" }}>POSTED BY </span>
+                  <span style={{ fontSize: 12, color: "#f97316", fontFamily: "'Space Mono', monospace", fontWeight: 700 }}>{ch.createdBy}</span>
+                </div>
+              )}
               {ch.description && (
                 <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 16, fontSize: 14, color: "#ccc", lineHeight: 1.6 }}>
                   <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>DESCRIPTION</div>
