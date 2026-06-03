@@ -56,15 +56,18 @@ function Avatar({ name, size = 36 }) {
   );
 }
 
-function BadgeChip({ badge }) {
+function BadgeChip({ badge, earned = true, onTap }) {
   return (
-    <div title={badge.desc} style={{
-      background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)",
+    <div onClick={onTap} style={{
+      background: earned ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)",
+      border: `1px solid ${earned ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)"}`,
       borderRadius: 20, padding: "3px 10px", fontSize: 13, display: "flex",
-      alignItems: "center", gap: 4, cursor: "default"
+      alignItems: "center", gap: 4, cursor: "pointer",
+      opacity: earned ? 1 : 0.45, filter: earned ? "none" : "grayscale(1)"
     }}>
       <span>{badge.emoji}</span>
-      <span style={{ color: "#ccc", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>{badge.label}</span>
+      <span style={{ color: earned ? "#ccc" : "#555", fontFamily: "'Space Mono', monospace", fontSize: 11 }}>{badge.label}</span>
+      {!earned && <span style={{ fontSize: 9, color: "#444", fontFamily: "'Space Mono', monospace" }}>🔒</span>}
     </div>
   );
 }
@@ -102,6 +105,7 @@ export default function App() {
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [badgesExpanded, setBadgesExpanded] = useState(false);
+  const [badgeModal, setBadgeModal] = useState(null); // { badge, earned }
   const [mentionAlert, setMentionAlert] = useState(null);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => localStorage.getItem("sweatsquad_notif_dismissed") === "true");
@@ -706,6 +710,21 @@ export default function App() {
         </div>
       )}
 
+      {badgeModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 990, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setBadgeModal(null)}>
+          <div style={{ background: "#1a1a1f", border: `1.5px solid ${badgeModal.earned ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 20, padding: 28, maxWidth: 320, width: "100%", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 52, marginBottom: 8, filter: badgeModal.earned ? "none" : "grayscale(1)", opacity: badgeModal.earned ? 1 : 0.4 }}>{badgeModal.badge.emoji}</div>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, letterSpacing: 2, marginBottom: 8 }}>{badgeModal.badge.label}</div>
+            <div style={{ fontSize: 13, color: "#888", lineHeight: 1.6, marginBottom: 16 }}>{badgeModal.badge.desc}</div>
+            {badgeModal.earned
+              ? <div style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 10, padding: "8px 16px", fontSize: 13, color: "#4ade80", fontWeight: 700 }}>✅ Earned!</div>
+              : <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 16px", fontSize: 13, color: "#666" }}>🔒 Not yet earned</div>
+            }
+            <button onClick={() => setBadgeModal(null)} style={{ marginTop: 16, background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 14 }}>Close</button>
+          </div>
+        </div>
+      )}
+
       {deleteConfirm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 990, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ background: "#1a1a1f", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 20, padding: 28, maxWidth: 340, width: "100%", textAlign: "center" }}>
@@ -764,7 +783,7 @@ export default function App() {
                     <span style={{ color: "#f97316", fontSize: 18, marginTop: -10 }}>{badgesExpanded ? "▲" : "▼"}</span>
                   </button>
                   {badgesExpanded && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} />)}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} earned={true} onTap={() => setBadgeModal({ badge: b, earned: true })} />)}</div>
                   )}
                 </div>
               ) : null;
@@ -1242,17 +1261,20 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  {badges.length > 0 && (
-                    <div style={{ marginBottom: 24 }}>
-                      <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
-                        <SectionLabel>YOUR BADGES ({badges.length})</SectionLabel>
-                        <span style={{ color: "#f97316", fontSize: 18, marginTop: -10 }}>{badgesExpanded ? "▲" : "▼"}</span>
-                      </button>
-                      {badgesExpanded && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} />)}</div>
-                      )}
-                    </div>
-                  )}
+                  <div style={{ marginBottom: 24 }}>
+                    <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
+                      <SectionLabel>BADGES ({badges.length}/{BADGE_DEFS.length})</SectionLabel>
+                      <span style={{ color: "#f97316", fontSize: 18, marginTop: -10 }}>{badgesExpanded ? "▲" : "▼"}</span>
+                    </button>
+                    {badgesExpanded && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {BADGE_DEFS.map(b => {
+                          const earned = badges.find(e => e.id === b.id);
+                          return <BadgeChip key={b.id} badge={b} earned={!!earned} onTap={() => setBadgeModal({ badge: b, earned: !!earned })} />;
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <SectionLabel>ACTIVITY HISTORY</SectionLabel>
                   {history.length === 0 && (
                     <div style={{ textAlign: "center", padding: "40px 0", color: "#555" }}>
