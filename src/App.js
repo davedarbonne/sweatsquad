@@ -903,7 +903,16 @@ export default function App() {
                   </span>
                 </div>
               )}
-              {!completed && !isExpired(ch) && (
+              {completed && (
+                <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 16, padding: "12px 18px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 22 }}>🎉</span>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#4ade80", fontSize: 14 }}>Goal crushed! Keep going to flex on everyone 💪</div>
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Your total: {myTotal.toLocaleString()} {ch.unit}</div>
+                  </div>
+                </div>
+              )}
+              {!isExpired(ch) && (
                 <div style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 16, padding: 18, marginBottom: 20 }}>
                   <div style={{ fontWeight: 700, marginBottom: 12 }}>Log Your Progress</div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -913,18 +922,11 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {isExpired(ch) && !completed && (
+              {isExpired(ch) && (
                 <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 16, padding: 18, marginBottom: 20, textAlign: "center" }}>
                   <div style={{ fontSize: 22, marginBottom: 4 }}>⏰</div>
                   <div style={{ fontWeight: 700, color: "#ef4444" }}>Time's Up!</div>
                   <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>This challenge has ended. Final standings are locked in.</div>
-                </div>
-              )}
-              {completed && (
-                <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 16, padding: 18, marginBottom: 20, textAlign: "center" }}>
-                  <div style={{ fontSize: 24, marginBottom: 4 }}>🎉</div>
-                  <div style={{ fontWeight: 700, color: "#4ade80" }}>Challenge Complete!</div>
-                  <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>You crushed it, {userName}!</div>
                 </div>
               )}
               <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 20 }}>
