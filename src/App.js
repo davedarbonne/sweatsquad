@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, auth, googleProvider } from "./firebase";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 import { doc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "firebase/auth";
 
 const VAPID_KEY = "BObS3r8ohcb3-voKgEidcDFOnHaD8IayMPQrbaq9hEGFgus_0R7_9BfRomHU5ODLsBMJw6_F0Nc1v5CYQIz6sgA";
 
@@ -131,8 +131,16 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [lastReadTs, setLastReadTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastread") || "0"));
 
-  // Firebase Auth state listener
+  // Firebase Auth state listener + handle Google redirect result
   useEffect(() => {
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        const name = result.user.displayName || result.user.email.split("@")[0];
+        setUserName(name);
+        localStorage.setItem("sweatsquad_username", name);
+      }
+    }).catch(() => {});
+
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (user) {
@@ -268,12 +276,9 @@ export default function App() {
   const handleGoogleSignIn = async () => {
     setAuthError("");
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const name = result.user.displayName || result.user.email.split("@")[0];
-      setUserName(name);
-      localStorage.setItem("sweatsquad_username", name);
+      await signInWithRedirect(auth, googleProvider);
     } catch (err) {
-      if (err.code !== "auth/popup-closed-by-user") setAuthError("Google sign in failed — please try again");
+      setAuthError("Google sign in failed — please try again");
     }
   };
 
