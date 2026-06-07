@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { db } from "./firebase";
+import { db, auth, googleProvider } from "./firebase";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "firebase/auth";
 
 const VAPID_KEY = "BObS3r8ohcb3-voKgEidcDFOnHaD8IayMPQrbaq9hEGFgus_0R7_9BfRomHU5ODLsBMJw6_F0Nc1v5CYQIz6sgA";
 
@@ -96,6 +97,13 @@ const FIRESTORE_DOC = "sweatsquad/challenges";
 
 export default function App() {
   const [screen, setScreen] = useState("home");
+  const [authScreen, setAuthScreen] = useState("login"); // login | signup | forgot
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authDisplayName, setAuthDisplayName] = useState("");
   const [userName, setUserName] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [challenges, setChallenges] = useState([]);
@@ -123,10 +131,20 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [lastReadTs, setLastReadTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastread") || "0"));
 
-  // Load username from localStorage
+  // Firebase Auth state listener
   useEffect(() => {
-    const saved = localStorage.getItem("sweatsquad_username");
-    if (saved) setUserName(saved);
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (user) {
+        const name = user.displayName || user.email.split("@")[0];
+        setUserName(name);
+        localStorage.setItem("sweatsquad_username", name);
+      } else {
+        setUserName("");
+      }
+      setAuthLoading(false);
+    });
+    return () => unsub();
   }, []);
 
   // Real-time listener for challenges from Firestore
@@ -216,6 +234,65 @@ export default function App() {
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSignUp = async () => {
+    setAuthError("");
+    if (!authDisplayName.trim()) { setAuthError("Please enter a display name"); return; }
+    if (!authEmail.trim()) { setAuthError("Please enter your email"); return; }
+    if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters"); return; }
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+      await updateProfile(cred.user, { displayName: authDisplayName.trim() });
+      setUserName(authDisplayName.trim());
+      localStorage.setItem("sweatsquad_username", authDisplayName.trim());
+    } catch (err) {
+      if (err.code === "auth/email-already-in-use") setAuthError("Email already in use — try logging in");
+      else if (err.code === "auth/invalid-email") setAuthError("Invalid email address");
+      else setAuthError("Sign up failed — please try again");
+    }
+  };
+
+  const handleLogin = async () => {
+    setAuthError("");
+    if (!authEmail.trim() || !authPassword) { setAuthError("Please enter email and password"); return; }
+    try {
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+    } catch (err) {
+      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") setAuthError("Incorrect email or password");
+      else if (err.code === "auth/user-not-found") setAuthError("No account found — try signing up");
+      else setAuthError("Login failed — please try again");
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthError("");
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const name = result.user.displayName || result.user.email.split("@")[0];
+      setUserName(name);
+      localStorage.setItem("sweatsquad_username", name);
+    } catch (err) {
+      if (err.code !== "auth/popup-closed-by-user") setAuthError("Google sign in failed — please try again");
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setAuthError("");
+    if (!authEmail.trim()) { setAuthError("Enter your email above first"); return; }
+    try {
+      await sendPasswordResetEmail(auth, authEmail);
+      setAuthError("✅ Reset email sent! Check your inbox");
+    } catch (err) {
+      setAuthError("Could not send reset email — check your address");
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+    setUserName("");
+    localStorage.removeItem("sweatsquad_username");
+    setScreen("home");
   };
 
   const handleSetName = () => {
@@ -627,7 +704,101 @@ export default function App() {
     { label: "My Stats", icon: "📊", s: "profile" },
   ];
 
-  if (loading) return (
+  // Show auth screen if not logged in
+  if (!authLoading && !currentUser) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0d0d0f", fontFamily: "'DM Sans', sans-serif", color: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+        <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ width: "100%", maxWidth: 380, position: "relative", zIndex: 1 }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 42, letterSpacing: 3, lineHeight: 1 }}>
+              SWEAT<span style={{ color: "#f97316" }}>SQUAD</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace", marginTop: 4, letterSpacing: 2 }}>CHALLENGE YOUR CREW</div>
+          </div>
+
+          {authError && (
+            <div style={{ background: authError.startsWith("✅") ? "rgba(74,222,128,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${authError.startsWith("✅") ? "rgba(74,222,128,0.3)" : "rgba(239,68,68,0.3)"}`, borderRadius: 12, padding: "10px 16px", marginBottom: 16, fontSize: 13, color: authError.startsWith("✅") ? "#4ade80" : "#f87171", textAlign: "center" }}>
+              {authError}
+            </div>
+          )}
+
+          <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 24 }}>
+            {authScreen === "signup" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Display Name</div>
+                <input value={authDisplayName} onChange={e => setAuthDisplayName(e.target.value)}
+                  placeholder="What name have you been using?"
+                  style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
+                <div style={{ fontSize: 11, color: "#666", marginTop: 6 }}>⚠️ Use the same name you've been logging with to keep your history</div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Email</div>
+              <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && (authScreen === "login" ? handleLogin() : authScreen === "signup" ? handleSignUp() : handleForgotPassword())}
+                placeholder="your@email.com"
+                style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
+            </div>
+
+            {authScreen !== "forgot" && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Password</div>
+                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && (authScreen === "login" ? handleLogin() : handleSignUp())}
+                  placeholder={authScreen === "signup" ? "At least 6 characters" : "Your password"}
+                  style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
+              </div>
+            )}
+
+            {authScreen === "login" && (
+              <>
+                <button onClick={handleLogin} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                  LOG IN
+                </button>
+                <button onClick={handleGoogleSignIn} style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>G</span> Continue with Google
+                </button>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <button onClick={() => { setAuthScreen("signup"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 13 }}>Create account</button>
+                  <button onClick={() => { setAuthScreen("forgot"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 13 }}>Forgot password?</button>
+                </div>
+              </>
+            )}
+
+            {authScreen === "signup" && (
+              <>
+                <button onClick={handleSignUp} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                  JOIN THE SQUAD
+                </button>
+                <button onClick={handleGoogleSignIn} style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>G</span> Continue with Google
+                </button>
+                <div style={{ textAlign: "center" }}>
+                  <button onClick={() => { setAuthScreen("login"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 13 }}>Already have an account? Log in</button>
+                </div>
+              </>
+            )}
+
+            {authScreen === "forgot" && (
+              <>
+                <button onClick={handleForgotPassword} style={{ width: "100%", background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 12, padding: 14, color: "#f97316", fontWeight: 700, cursor: "pointer", fontSize: 15, marginBottom: 12 }}>
+                  Send Reset Email
+                </button>
+                <div style={{ textAlign: "center" }}>
+                  <button onClick={() => { setAuthScreen("login"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 13 }}>Back to login</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading || loading) return (
     <div style={{ minHeight: "100vh", background: "#0d0d0f", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ fontSize: 48 }}>🏋️</div>
     </div>
@@ -749,16 +920,7 @@ export default function App() {
           {userName && <Avatar name={userName} size={42} />}
         </div>
 
-        {!userName && (
-          <div style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 16, padding: 20, marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, marginBottom: 10 }}>Who are you? 👋</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSetName()} placeholder="Your name..."
-                style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 15, outline: "none" }} />
-              <button onClick={handleSetName} style={{ background: "#f97316", border: "none", borderRadius: 10, padding: "10px 18px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15 }}>Go</button>
-            </div>
-          </div>
-        )}
+
 
         {screen === "challenge" && (
           <button onClick={() => { setScreen("home"); setSelectedChallenge(null); }} style={{ background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 14, fontWeight: 600, padding: "4px 0", marginBottom: 12, display: "flex", alignItems: "center", gap: 4 }}>
@@ -1244,7 +1406,10 @@ export default function App() {
                   <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, padding: 20 }}>
                     <Avatar name={userName} size={56} />
                     <div>
-                      <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 2 }}>{userName}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 2 }}>{userName}</div>
+                        <button onClick={handleSignOut} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 10px", color: "#ef4444", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>Sign Out</button>
+                      </div>
                       <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
                         <div style={{ fontSize: 13, color: "#888" }}>{badges.length} badge{badges.length !== 1 ? "s" : ""}</div>
                         <div style={{ fontSize: 13, color: "#f97316", fontWeight: 700 }}>🏆 {getPoints(userName, challenges)} pts</div>
