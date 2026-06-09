@@ -763,9 +763,6 @@ export default function App() {
                 <button onClick={handleLogin} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
                   LOG IN
                 </button>
-                <button onClick={handleGoogleSignIn} style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18 }}>G</span> Continue with Google
-                </button>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                   <button onClick={() => { setAuthScreen("signup"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 13 }}>Create account</button>
                   <button onClick={() => { setAuthScreen("forgot"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 13 }}>Forgot password?</button>
@@ -777,9 +774,6 @@ export default function App() {
               <>
                 <button onClick={handleSignUp} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
                   JOIN THE SQUAD
-                </button>
-                <button onClick={handleGoogleSignIn} style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18 }}>G</span> Continue with Google
                 </button>
                 <div style={{ textAlign: "center" }}>
                   <button onClick={() => { setAuthScreen("login"); setAuthError(""); }} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 13 }}>Already have an account? Log in</button>
@@ -992,8 +986,10 @@ export default function App() {
                     {newChallenge && (
                       <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
                     )}
-                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ch.id); }} title="Delete challenge"
-                      style={{ position: "absolute", top: 14, right: 14, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 8px", color: "#ef4444", cursor: "pointer", fontSize: 13, lineHeight: 1 }}>🗑</button>
+                    {ch.createdBy === userName && (
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ch.id); }} title="Delete challenge"
+                        style={{ position: "absolute", top: 14, right: 14, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 8px", color: "#ef4444", cursor: "pointer", fontSize: 13, lineHeight: 1 }}>🗑</button>
+                    )}
                     <div onClick={() => { setSelectedChallenge(ch); setScreen("challenge"); }} style={{ cursor: "pointer" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12, paddingRight: 36 }}>
                         <div style={{ fontSize: 28 }}>{ch.emoji}</div>
@@ -1037,7 +1033,9 @@ export default function App() {
                   <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 28, letterSpacing: 2 }}>{ch.name}</div>
                   <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
                 </div>
-                <button onClick={() => setDeleteConfirm(ch.id)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "8px 10px", color: "#ef4444", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>🗑</button>
+                {ch.createdBy === userName && (
+                  <button onClick={() => setDeleteConfirm(ch.id)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "8px 10px", color: "#ef4444", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>🗑</button>
+                )}
               </div>
               {ch.createdBy && (
                 <div style={{ textAlign: "center", marginBottom: 16 }}>
@@ -1310,12 +1308,13 @@ export default function App() {
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 8, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-                    <input
+                    <textarea
                       value={chatInput}
-                      onChange={e => handleChatInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && mentionList.length === 0) handleSendMessage(); }}
+                      onChange={e => { handleChatInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 104) + "px"; }}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && mentionList.length === 0) { e.preventDefault(); handleSendMessage(); } }}
                       placeholder="Say something... (type @ to mention)"
-                      style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 24, padding: "10px 16px", color: "#fff", fontSize: 15, outline: "none" }}
+                      rows={1}
+                      style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 18, padding: "10px 16px", color: "#fff", fontSize: 15, outline: "none", resize: "none", fontFamily: "inherit", lineHeight: "1.5", overflowY: "auto", maxHeight: 104 }}
                     />
                     <button onClick={() => handleSendMessage()} style={{ background: "#f97316", border: "none", borderRadius: "50%", width: 44, height: 44, color: "#fff", cursor: "pointer", fontSize: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
                   </div>
