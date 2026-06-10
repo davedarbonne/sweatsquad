@@ -117,6 +117,7 @@ export default function App() {
   const [mentionAlert, setMentionAlert] = useState(null);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => localStorage.getItem("sweatsquad_notif_dismissed") === "true");
+  const [reminderTime, setReminderTime] = useState(() => localStorage.getItem("sweatsquad_reminder_time") || "07:00");
   const [lastSeenMentionTs, setLastSeenMentionTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastmention") || "0"));
   const messagesEndRef = useRef(null);
   const [mentionList, setMentionList] = useState([]); // users shown in @ dropdown
@@ -198,7 +199,8 @@ export default function App() {
         const existing = await getDocs(query(tokensRef, where("token", "==", token)));
         existing.forEach(d => deleteDoc(d.ref));
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        await addDoc(tokensRef, { username: userName, token, updatedAt: Date.now(), timezone });
+        const savedTime = localStorage.getItem("sweatsquad_reminder_time") || "07:00";
+        await addDoc(tokensRef, { username: userName, token, updatedAt: Date.now(), timezone, reminderTime: savedTime });
       }
       // Handle foreground messages
       onMessage(messaging, (payload) => {
@@ -298,6 +300,22 @@ export default function App() {
     setUserName("");
     localStorage.removeItem("sweatsquad_username");
     setScreen("home");
+  };
+
+  const handleUpdateReminderTime = async (time) => {
+    setReminderTime(time);
+    localStorage.setItem("sweatsquad_reminder_time", time);
+    // Update all tokens for this user in Firestore
+    try {
+      const tokensRef = collection(db, "fcmTokens");
+      const existing = await getDocs(query(tokensRef, where("username", "==", userName)));
+      for (const d of existing.docs) {
+        await setDoc(d.ref, { ...d.data(), reminderTime: time });
+      }
+      showToast("Reminder time updated! ⏰");
+    } catch (err) {
+      console.log("Could not update reminder time:", err);
+    }
   };
 
   const handleSetName = () => {
@@ -1432,6 +1450,22 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                  {notifPermission === "granted" && (
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 24 }}>
+                      <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 12 }}>DAILY REMINDER TIME 🔔</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <input
+                          type="time"
+                          value={reminderTime}
+                          onChange={e => handleUpdateReminderTime(e.target.value)}
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 15, outline: "none", fontFamily: "inherit", flex: 1 }}
+                        />
+                        <div style={{ fontSize: 12, color: "#888" }}>your local time</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>You'll be reminded about active challenges at this time each day</div>
+                    </div>
+                  )}
+
                   <div style={{ marginBottom: 24 }}>
                     <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
                       <SectionLabel>BADGES ({badges.length}/{BADGE_DEFS.length})</SectionLabel>
