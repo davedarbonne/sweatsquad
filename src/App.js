@@ -124,6 +124,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newBadges, setNewBadges] = useState([]);
+  const [streakInfo, setStreakInfo] = useState(null); // { days, isNew, milestone }
+  const [streakBanner, setStreakBanner] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -430,6 +432,26 @@ export default function App() {
 
   const getPoints = (user, allChallenges) => {
     let points = 0;
+    // Streak bonus points
+    const tzOffset = 0; // use UTC for consistency in points calc
+    const allDates = new Set();
+    allChallenges.forEach(ch => {
+      (ch.logs || []).filter(l => l.user === user).forEach(l => {
+        allDates.add(new Date(l.ts).toISOString().slice(0, 10));
+      });
+    });
+    const sorted = [...allDates].sort();
+    let streak = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      const diff = (new Date(sorted[i]) - new Date(sorted[i-1])) / 86400000;
+      if (diff === 1) {
+        streak++;
+        if (streak === 3) points += 1;
+        else if (streak > 3 && streak % 7 === 0) points += 2;
+      } else {
+        streak = 1;
+      }
+    }
     // Challenge completion points: 1st=5, 2nd=4, 3rd=3, rest=2
     allChallenges.forEach(ch => {
       const completers = [];
@@ -519,6 +541,19 @@ export default function App() {
     setLogAmount("");
     showToast(`+${amt} ${selectedChallenge.unit} logged! 💪`);
     setShareLog({ challengeName: selectedChallenge.name, emoji: selectedChallenge.emoji, amount: amt, unit: selectedChallenge.unit });
+
+    // Calculate streak after log
+    const tzOffset = new Date().getTimezoneOffset() * -60000;
+    const prevStreak = getCurrentStreak(userName, challenges, tzOffset);
+    const newStreak = getCurrentStreak(userName, updated, tzOffset);
+    if (newStreak > 0) {
+      const milestone = getStreakPoints(newStreak);
+      const isExtended = newStreak > prevStreak;
+      if (isExtended || newStreak === 1) {
+        setStreakBanner({ days: newStreak, milestone });
+        setTimeout(() => setStreakBanner(null), 4000);
+      }
+    }
   };
 
   const handleCreateChallenge = async () => {
@@ -642,6 +677,41 @@ export default function App() {
     if (days > 0) return `${days}d ${hours}h left`;
     const mins = Math.floor((diff % 3600000) / 60000);
     return `${hours}h ${mins}m left`;
+  };
+
+  const getCurrentStreak = (user, allChallenges, tzOffset = 0) => {
+    const allDates = new Set();
+    allChallenges.forEach(ch => {
+      (ch.logs || []).filter(l => l.user === user).forEach(l => {
+        // Convert timestamp to user's local date
+        const localDate = new Date(l.ts + tzOffset);
+        const dateStr = `${localDate.getUTCFullYear()}-${String(localDate.getUTCMonth()+1).padStart(2,'0')}-${String(localDate.getUTCDate()).padStart(2,'0')}`;
+        allDates.add(dateStr);
+      });
+    });
+    const sorted = [...allDates].sort().reverse();
+    if (!sorted.length) return 0;
+    // Check if today or yesterday has a log (streak still active)
+    const now = new Date(Date.now() + tzOffset);
+    const todayStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}-${String(now.getUTCDate()).padStart(2,'0')}`;
+    const yesterday = new Date(Date.now() + tzOffset - 86400000);
+    const yesterdayStr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth()+1).padStart(2,'0')}-${String(yesterday.getUTCDate()).padStart(2,'0')}`;
+    if (sorted[0] !== todayStr && sorted[0] !== yesterdayStr) return 0;
+    let streak = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      const curr = new Date(sorted[i-1]);
+      const prev = new Date(sorted[i]);
+      const diff = (curr - prev) / 86400000;
+      if (diff === 1) streak++;
+      else break;
+    }
+    return streak;
+  };
+
+  const getStreakPoints = (streak) => {
+    if (streak === 3) return 1;
+    if (streak > 3 && streak % 7 === 0) return 2;
+    return 0;
   };
 
   const getYouTubeId = (url) => {
@@ -828,9 +898,37 @@ export default function App() {
       <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
 
       {newBadges.length > 0 && (
-        <div style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #1a1a1f, #2a1a00)", border: "1.5px solid #f97316", borderRadius: 16, padding: "14px 24px", zIndex: 999, textAlign: "center", boxShadow: "0 0 40px rgba(249,115,22,0.4)" }}>
-          <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 6 }}>NEW BADGE UNLOCKED</div>
-          {newBadges.map(b => <div key={b.id} style={{ fontSize: 22 }}>{b.emoji} <span style={{ fontWeight: 700 }}>{b.label}</span></div>)}
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "linear-gradient(135deg, #1a1a1f, #2a1a00)", border: "2px solid #f97316", borderRadius: 24, padding: "32px 28px", textAlign: "center", maxWidth: 320, width: "100%", boxShadow: "0 0 60px rgba(249,115,22,0.5)" }}>
+            <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 3, marginBottom: 16 }}>🎉 BADGE UNLOCKED 🎉</div>
+            {newBadges.map(b => (
+              <div key={b.id} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 64, marginBottom: 8 }}>{b.emoji}</div>
+                <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 28, letterSpacing: 2, marginBottom: 6 }}>{b.label}</div>
+                <div style={{ fontSize: 13, color: "#888", lineHeight: 1.5 }}>{b.desc}</div>
+              </div>
+            ))}
+            <button onClick={() => setNewBadges([])} style={{ marginTop: 8, background: "#f97316", border: "none", borderRadius: 12, padding: "12px 32px", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 15, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2 }}>
+              NICE! 💪
+            </button>
+          </div>
+        </div>
+      )}
+
+      {streakBanner && (
+        <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: "linear-gradient(135deg, #1a1a00, #2a1500)", border: "1.5px solid #f97316", borderRadius: 16, padding: "14px 20px", zIndex: 997, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 4px 24px rgba(249,115,22,0.4)", maxWidth: 360, width: "calc(100% - 32px)" }}>
+          <div style={{ fontSize: 32 }}>🔥</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1, color: "#f97316" }}>
+              {streakBanner.days === 1 ? "STREAK STARTED!" : `${streakBanner.days} DAY STREAK!`}
+            </div>
+            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
+              {streakBanner.milestone > 0
+                ? `+${streakBanner.milestone} bonus point${streakBanner.milestone > 1 ? "s" : ""} earned! Keep it up!`
+                : "Log again tomorrow to keep it going!"}
+            </div>
+          </div>
+          <button onClick={() => setStreakBanner(null)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 20, padding: "0 4px" }}>×</button>
         </div>
       )}
 
@@ -934,7 +1032,19 @@ export default function App() {
             <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 34, letterSpacing: 2, lineHeight: 1, color: "#fff" }}>SWEAT<span style={{ color: "#f97316" }}>SQUAD</span></div>
             <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace", marginTop: 2 }}>CHALLENGE YOUR CREW</div>
           </div>
-          {userName && <Avatar name={userName} size={42} />}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {(() => {
+              const tzOffset = new Date().getTimezoneOffset() * -60000;
+              const streak = getCurrentStreak(userName, challenges, tzOffset);
+              return streak > 0 ? (
+                <div style={{ background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 16 }}>🔥</span>
+                  <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: "#f97316", letterSpacing: 1 }}>{streak}</span>
+                </div>
+              ) : null;
+            })()}
+            {userName && <Avatar name={userName} size={42} />}
+          </div>
         </div>
 
 
