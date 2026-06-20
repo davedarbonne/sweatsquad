@@ -98,6 +98,16 @@ const FIRESTORE_DOC = "sweatsquad/challenges";
 export default function App() {
   const [screen, setScreen] = useState("home");
   const [authScreen, setAuthScreen] = useState("login"); // login | signup | forgot
+  const [groupScreen, setGroupScreen] = useState("setup"); // setup | browse | create | join | settings
+  const [currentGroup, setCurrentGroup] = useState(null); // { id, name, type, code, admins, members }
+  const [userGroups, setUserGroups] = useState([]);
+  const [allOpenGroups, setAllOpenGroups] = useState([]);
+  const [groupSwitcherOpen, setGroupSwitcherOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupType, setNewGroupType] = useState("closed");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
@@ -158,31 +168,67 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Real-time listener for challenges from Firestore
+  // Load user's groups
   useEffect(() => {
-    const ref = doc(db, "sweatsquad", "challenges");
+    if (!userName) return;
+    const ref = collection(db, "groups");
+    const unsub = onSnapshot(ref, (snap) => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const mine = all.filter(g => (g.members || []).includes(userName));
+      const open = all.filter(g => g.type === "open" && !(g.members || []).includes(userName));
+      setUserGroups(mine);
+      setAllOpenGroups(open);
+      // Auto-select last used group
+      const lastGroupId = localStorage.getItem(`sweatsquad_group_${userName}`);
+      const lastGroup = mine.find(g => g.id === lastGroupId) || mine[0];
+      if (lastGroup && (!currentGroup || !mine.find(g => g.id === currentGroup.id))) {
+        setCurrentGroup(lastGroup);
+      }
+      if (mine.length === 0) setGroupScreen("setup");
+    });
+    return () => unsub();
+  }, [userName]); // eslint-disable-line
+
+  // Real-time listener for challenges from Firestore (group-scoped)
+  useEffect(() => {
+    if (!currentGroup) { setLoading(false); return; }
+    const ref = doc(db, "groups", currentGroup.id, "data", "challenges");
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
         setChallenges(snap.data().list || []);
+      } else {
+        setChallenges([]);
       }
       setLoading(false);
     }, () => setLoading(false));
     return () => unsub();
-  }, []);
+  }, [currentGroup?.id]); // eslint-disable-line
 
-  // Real-time chat listener
+  // Real-time chat listener (group-scoped)
   useEffect(() => {
-    const ref = doc(db, "sweatsquad", "chat");
+    if (!currentGroup) return;
+    const ref = doc(db, "groups", currentGroup.id, "data", "chat");
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
         const msgs = snap.data().messages || [];
         setMessages(msgs);
         const unread = msgs.filter(m => m.ts > lastReadTs && m.user !== userName).length;
         setUnreadCount(unread);
+      } else {
+        setMessages([]);
       }
     });
     return () => unsub();
-  }, [lastReadTs, userName]); // eslint-disable-line
+  }, [currentGroup?.id, lastReadTs, userName]); // eslint-disable-line
+
+  // Watch pending join requests for admins
+  useEffect(() => {
+    if (!currentGroup) return;
+    const isAdmin = (currentGroup.admins || []).includes(userName);
+    if (!isAdmin || currentGroup.type !== "closed") return;
+    const pending = currentGroup.pendingMembers || [];
+    setPendingRequests(pending);
+  }, [currentGroup, userName]);
 
   // Request notification permission and save FCM token
   const setupNotifications = async () => {
@@ -194,10 +240,7 @@ export default function App() {
       const messaging = getMessaging();
       const token = await getToken(messaging, { vapidKey: VAPID_KEY });
       if (token) {
-        // Save token mapped to username in Firestore
-        const { collection, addDoc, query, where, getDocs, deleteDoc } = await import("firebase/firestore");
         const tokensRef = collection(db, "fcmTokens");
-        // Remove old tokens for this user+device combo
         const existing = await getDocs(query(tokensRef, where("token", "==", token)));
         existing.forEach(d => deleteDoc(d.ref));
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -239,8 +282,14 @@ export default function App() {
   }, [challenges]); // eslint-disable-line
 
   const save = async (updated) => {
-    const ref = doc(db, "sweatsquad", "challenges");
+    if (!currentGroup) return;
+    const ref = doc(db, "groups", currentGroup.id, "data", "challenges");
     await setDoc(ref, { list: updated });
+  };
+
+  const saveGroup = async (groupData) => {
+    const ref = doc(db, "groups", groupData.id);
+    await setDoc(ref, groupData);
   };
 
   const showToast = (msg, type = "success") => {
@@ -583,7 +632,7 @@ export default function App() {
   };
 
   const handleSendMessage = async (logShare = null) => {
-    if (!userName) { showToast("Set your name first!", "error"); return; }
+    if (!userName || !currentGroup) { showToast("Set your name first!", "error"); return; }
     const text = logShare ? null : chatInput.trim();
     if (!logShare && !text) return;
     const msg = {
@@ -593,7 +642,7 @@ export default function App() {
       text: logShare ? null : text,
       logShare: logShare || null,
     };
-    const ref = doc(db, "sweatsquad", "chat");
+    const ref = doc(db, "groups", currentGroup.id, "data", "chat");
     const updated = [...messages, msg];
     await setDoc(ref, { messages: updated });
     setChatInput("");
@@ -614,6 +663,137 @@ export default function App() {
     setLastReadTs(now);
     setUnreadCount(0);
     localStorage.setItem("sweatsquad_lastread", now.toString());
+  };
+
+  // Generate a random 6-character group code
+  const generateGroupCode = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  };
+
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim()) { showToast("Enter a group name", "error"); return; }
+    const code = generateGroupCode();
+    const group = {
+      id: Date.now().toString(),
+      name: newGroupName.trim(),
+      type: newGroupType,
+      code,
+      createdBy: userName,
+      createdAt: Date.now(),
+      admins: [userName],
+      members: [userName],
+      pendingMembers: [],
+    };
+    await setDoc(doc(db, "groups", group.id), group);
+    setCurrentGroup(group);
+    localStorage.setItem(`sweatsquad_group_${userName}`, group.id);
+    setNewGroupName("");
+    setGroupSwitcherOpen(false);
+    showToast("Group created! 🎉");
+  };
+
+  const handleJoinOpenGroup = async (group) => {
+    const updated = { ...group, members: [...(group.members || []), userName] };
+    await saveGroup(updated);
+    setCurrentGroup(updated);
+    localStorage.setItem(`sweatsquad_group_${userName}`, group.id);
+    setGroupSwitcherOpen(false);
+    showToast(`Joined ${group.name}! 💪`);
+  };
+
+  const handleRequestJoin = async () => {
+    if (!joinCodeInput.trim()) { showToast("Enter a group code", "error"); return; }
+    const code = joinCodeInput.trim().toUpperCase();
+    const snap = await getDocs(collection(db, "groups"));
+    const group = snap.docs.map(d => ({ id: d.id, ...d.data() })).find(g => g.code === code);
+    if (!group) { showToast("Group not found — check the code", "error"); return; }
+    if ((group.members || []).includes(userName)) { showToast("You're already in this group!", "error"); return; }
+    if (group.type === "open") {
+      await handleJoinOpenGroup(group);
+    } else {
+      // Add to pending
+      if ((group.pendingMembers || []).includes(userName)) { showToast("Request already sent!", "error"); return; }
+      const updated = { ...group, pendingMembers: [...(group.pendingMembers || []), userName] };
+      await saveGroup(updated);
+      showToast("Request sent! Wait for admin approval 🙏");
+    }
+    setJoinCodeInput("");
+    setGroupSwitcherOpen(false);
+  };
+
+  const handleApproveMember = async (memberName) => {
+    const updated = {
+      ...currentGroup,
+      members: [...(currentGroup.members || []), memberName],
+      pendingMembers: (currentGroup.pendingMembers || []).filter(m => m !== memberName),
+    };
+    await saveGroup(updated);
+    setCurrentGroup(updated);
+    showToast(`${memberName} approved! 🎉`);
+  };
+
+  const handleRejectMember = async (memberName) => {
+    const updated = {
+      ...currentGroup,
+      pendingMembers: (currentGroup.pendingMembers || []).filter(m => m !== memberName),
+    };
+    await saveGroup(updated);
+    setCurrentGroup(updated);
+    showToast(`${memberName} removed from requests`);
+  };
+
+  const handleRemoveMember = async (memberName) => {
+    const updated = {
+      ...currentGroup,
+      members: (currentGroup.members || []).filter(m => m !== memberName),
+      admins: (currentGroup.admins || []).filter(m => m !== memberName),
+    };
+    // If no admins left, make oldest remaining member admin
+    if (updated.admins.length === 0 && updated.members.length > 0) {
+      updated.admins = [updated.members[0]];
+    }
+    await saveGroup(updated);
+    setCurrentGroup(updated);
+    showToast(`${memberName} removed from group`);
+  };
+
+  const handleToggleAdmin = async (memberName) => {
+    const isAdmin = (currentGroup.admins || []).includes(memberName);
+    const updated = {
+      ...currentGroup,
+      admins: isAdmin
+        ? (currentGroup.admins || []).filter(m => m !== memberName)
+        : [...(currentGroup.admins || []), memberName],
+    };
+    await saveGroup(updated);
+    setCurrentGroup(updated);
+    showToast(isAdmin ? `${memberName} is no longer an admin` : `${memberName} is now an admin!`);
+  };
+
+  const handleLeaveGroup = async () => {
+    const updated = {
+      ...currentGroup,
+      members: (currentGroup.members || []).filter(m => m !== userName),
+      admins: (currentGroup.admins || []).filter(m => m !== userName),
+    };
+    if (updated.admins.length === 0 && updated.members.length > 0) {
+      updated.admins = [updated.members[0]];
+    }
+    await saveGroup(updated);
+    localStorage.removeItem(`sweatsquad_group_${userName}`);
+    setCurrentGroup(null);
+    setGroupSettingsOpen(false);
+    showToast("You left the group");
+  };
+
+  const switchGroup = (group) => {
+    setCurrentGroup(group);
+    localStorage.setItem(`sweatsquad_group_${userName}`, group.id);
+    setGroupSwitcherOpen(false);
+    setChallenges([]);
+    setMessages([]);
+    setScreen("home");
   };
 
   const handleDeleteChallenge = async (id) => {
@@ -891,6 +1071,94 @@ export default function App() {
     </div>
   );
 
+  // Group setup screen — shown when user has no groups
+  if (currentUser && !currentGroup && userGroups.length === 0) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0d0d0f", fontFamily: "'DM Sans', sans-serif", color: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+        <div style={{ width: "100%", maxWidth: 380, position: "relative", zIndex: 1 }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 42, letterSpacing: 3 }}>SWEAT<span style={{ color: "#f97316" }}>SQUAD</span></div>
+            <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace", marginTop: 4, letterSpacing: 2 }}>WELCOME, {userName.toUpperCase()}!</div>
+          </div>
+
+          {groupScreen === "setup" && (
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, textAlign: "center" }}>Join or Create a Squad</div>
+              <div style={{ fontSize: 14, color: "#888", textAlign: "center", marginBottom: 24 }}>Get started by creating your own group or joining an existing one</div>
+              <button onClick={() => setGroupScreen("create")} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                CREATE A GROUP
+              </button>
+              <button onClick={() => setGroupScreen("join")} style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, marginBottom: 12 }}>
+                Join with Code
+              </button>
+              <button onClick={() => setGroupScreen("browse")} style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 14, color: "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 15 }}>
+                Browse Open Groups
+              </button>
+            </div>
+          )}
+
+          {groupScreen === "create" && (
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Create a Group</div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Group Name</div>
+                <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="e.g. The Boys, Work Crew..." style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 10, fontWeight: 600 }}>Group Type</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {["open", "closed"].map(t => (
+                    <button key={t} onClick={() => setNewGroupType(t)} style={{ flex: 1, background: newGroupType === t ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${newGroupType === t ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "12px 8px", color: newGroupType === t ? "#f97316" : "#888", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                      {t === "open" ? "🌐 Open" : "🔒 Closed"}
+                      <div style={{ fontSize: 10, fontWeight: 400, marginTop: 4, color: "#666" }}>{t === "open" ? "Anyone can join" : "Invite only"}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button onClick={handleCreateGroup} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                CREATE GROUP 🚀
+              </button>
+              <button onClick={() => setGroupScreen("setup")} style={{ width: "100%", background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 14 }}>← Back</button>
+            </div>
+          )}
+
+          {groupScreen === "join" && (
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Join with Code</div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Invite Code</div>
+                <input value={joinCodeInput} onChange={e => setJoinCodeInput(e.target.value.toUpperCase())} placeholder="e.g. ABC123" maxLength={6}
+                  style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 20, outline: "none", boxSizing: "border-box", textAlign: "center", letterSpacing: 4, fontFamily: "'Space Mono', monospace", fontWeight: 700 }} />
+              </div>
+              <button onClick={handleRequestJoin} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                JOIN GROUP
+              </button>
+              <button onClick={() => setGroupScreen("setup")} style={{ width: "100%", background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 14 }}>← Back</button>
+            </div>
+          )}
+
+          {groupScreen === "browse" && (
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Open Groups</div>
+              {allOpenGroups.length === 0 && <div style={{ color: "#555", textAlign: "center", padding: "20px 0" }}>No open groups yet</div>}
+              {allOpenGroups.map(g => (
+                <div key={g.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{g.name}</div>
+                    <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{(g.members || []).length} members</div>
+                  </div>
+                  <button onClick={() => handleJoinOpenGroup(g)} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Join</button>
+                </div>
+              ))}
+              <button onClick={() => setGroupScreen("setup")} style={{ width: "100%", background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 14, marginTop: 8 }}>← Back</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#0d0d0f", fontFamily: "'DM Sans', sans-serif", color: "#f0f0f0", position: "relative" }}>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -996,6 +1264,97 @@ export default function App() {
         </div>
       )}
 
+      {/* Group switcher modal */}
+      {groupSwitcherOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 990, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setGroupSwitcherOpen(false)}>
+          <div style={{ background: "#1a1a1f", borderRadius: "20px 20px 0 0", padding: 24, width: "100%", maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, letterSpacing: 2, marginBottom: 16 }}>YOUR GROUPS</div>
+            {userGroups.map(g => (
+              <div key={g.id} onClick={() => switchGroup(g)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: currentGroup?.id === g.id ? "rgba(249,115,22,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${currentGroup?.id === g.id ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 8, cursor: "pointer" }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{g.name}</div>
+                  <div style={{ fontSize: 11, color: "#666", marginTop: 2, fontFamily: "'Space Mono', monospace" }}>{g.type === "open" ? "🌐 Open" : "🔒 Closed"} · {(g.members || []).length} members</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {(g.admins || []).includes(userName) && <span style={{ fontSize: 10, background: "rgba(249,115,22,0.15)", color: "#f97316", borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>ADMIN</span>}
+                  {currentGroup?.id === g.id && <span style={{ color: "#f97316" }}>✓</span>}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button onClick={() => { setGroupSwitcherOpen(false); setGroupScreen("create"); setCurrentGroup(null); }} style={{ flex: 1, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 12, padding: 12, color: "#f97316", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>+ Create New</button>
+              <button onClick={() => { setGroupSwitcherOpen(false); setGroupScreen("join"); setCurrentGroup(null); }} style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 12, color: "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Join with Code</button>
+            </div>
+            <button onClick={() => setGroupSwitcherOpen(false)} style={{ width: "100%", background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, marginTop: 12 }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Group settings modal */}
+      {groupSettingsOpen && currentGroup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 990, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setGroupSettingsOpen(false)}>
+          <div style={{ background: "#1a1a1f", borderRadius: "20px 20px 0 0", padding: 24, width: "100%", maxWidth: 480, maxHeight: "80vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, letterSpacing: 2, marginBottom: 4 }}>{currentGroup.name}</div>
+            <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 20 }}>{currentGroup.type === "open" ? "🌐 OPEN GROUP" : "🔒 CLOSED GROUP"}</div>
+
+            {/* Invite code - admins only */}
+            {(currentGroup.admins || []).includes(userName) && (
+              <div style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", borderRadius: 14, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 8 }}>INVITE CODE</div>
+                <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 28, fontWeight: 700, letterSpacing: 6, color: "#fff", marginBottom: 8 }}>{currentGroup.code}</div>
+                <button onClick={() => { navigator.clipboard.writeText(currentGroup.code); showToast("Code copied! 📋"); }} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "6px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Copy Code</button>
+              </div>
+            )}
+
+            {/* Pending requests - admins only for closed groups */}
+            {(currentGroup.admins || []).includes(userName) && currentGroup.type === "closed" && (currentGroup.pendingMembers || []).length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 10 }}>PENDING REQUESTS ({(currentGroup.pendingMembers || []).length})</div>
+                {(currentGroup.pendingMembers || []).map(m => (
+                  <div key={m} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600 }}>{m}</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => handleApproveMember(m)} style={{ background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 8, padding: "4px 12px", color: "#4ade80", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>✓ Approve</button>
+                      <button onClick={() => handleRejectMember(m)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 12px", color: "#ef4444", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>✗ Reject</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Members list */}
+            <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 10 }}>MEMBERS ({(currentGroup.members || []).length})</div>
+            {(currentGroup.members || []).map(m => {
+              const isAdminMember = (currentGroup.admins || []).includes(m);
+              const iAmAdmin = (currentGroup.admins || []).includes(userName);
+              const isMe = m === userName;
+              return (
+                <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, background: isMe ? "rgba(249,115,22,0.06)" : "rgba(255,255,255,0.03)", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                  <Avatar name={m} size={32} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{m}{isMe ? " (you)" : ""}</div>
+                    {isAdminMember && <div style={{ fontSize: 10, color: "#f97316", fontFamily: "'Space Mono', monospace" }}>ADMIN</div>}
+                  </div>
+                  {iAmAdmin && !isMe && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => handleToggleAdmin(m)} style={{ background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.2)", borderRadius: 8, padding: "4px 10px", color: "#f97316", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                        {isAdminMember ? "Remove Admin" : "Make Admin"}
+                      </button>
+                      <button onClick={() => handleRemoveMember(m)} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 8px", color: "#ef4444", cursor: "pointer", fontSize: 13 }}>🗑</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <button onClick={handleLeaveGroup} style={{ width: "100%", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: 12, color: "#ef4444", fontWeight: 700, cursor: "pointer", fontSize: 14, marginTop: 16 }}>
+              Leave Group
+            </button>
+            <button onClick={() => setGroupSettingsOpen(false)} style={{ width: "100%", background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, marginTop: 8 }}>Close</button>
+          </div>
+        </div>
+      )}
+
       {badgeModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 990, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setBadgeModal(null)}>
           <div style={{ background: "#1a1a1f", border: `1.5px solid ${badgeModal.earned ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 20, padding: 28, maxWidth: 320, width: "100%", textAlign: "center" }} onClick={e => e.stopPropagation()}>
@@ -1030,7 +1389,12 @@ export default function App() {
         <div style={{ paddingTop: 28, paddingBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 34, letterSpacing: 2, lineHeight: 1, color: "#fff" }}>SWEAT<span style={{ color: "#f97316" }}>SQUAD</span></div>
-            <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace", marginTop: 2 }}>CHALLENGE YOUR CREW</div>
+            {currentGroup && (
+              <button onClick={() => setGroupSwitcherOpen(true)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                <span style={{ fontSize: 12, color: "#f97316", fontFamily: "'Space Mono', monospace" }}>{currentGroup.name}</span>
+                <span style={{ fontSize: 10, color: "#666" }}>▾</span>
+              </button>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {(() => {
@@ -1538,8 +1902,9 @@ export default function App() {
                   <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, padding: 20 }}>
                     <Avatar name={userName} size={56} />
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 2 }}>{userName}</div>
+                        <button onClick={() => setGroupSettingsOpen(true)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "4px 10px", color: "#aaa", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>⚙️ Group</button>
                         <button onClick={handleSignOut} style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 10px", color: "#ef4444", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>Sign Out</button>
                       </div>
                       <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
