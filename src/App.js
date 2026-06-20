@@ -103,6 +103,7 @@ export default function App() {
   const [userGroups, setUserGroups] = useState([]);
   const [allOpenGroups, setAllOpenGroups] = useState([]);
   const [groupSwitcherOpen, setGroupSwitcherOpen] = useState(false);
+  const [groupCreateModal, setGroupCreateModal] = useState(null); // "create" | "join" | "browse" | null
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupType, setNewGroupType] = useState("closed");
   const [joinCodeInput, setJoinCodeInput] = useState("");
@@ -689,6 +690,7 @@ export default function App() {
     setCurrentGroup(group);
     localStorage.setItem(`sweatsquad_group_${userName}`, group.id);
     setNewGroupName("");
+    setGroupCreateModal(null);
     setGroupSwitcherOpen(false);
     showToast("Group created! 🎉");
   };
@@ -719,6 +721,7 @@ export default function App() {
       showToast("Request sent! Wait for admin approval 🙏");
     }
     setJoinCodeInput("");
+    setGroupCreateModal(null);
     setGroupSwitcherOpen(false);
   };
 
@@ -1264,6 +1267,55 @@ export default function App() {
         </div>
       )}
 
+      {/* Create/Join group modal overlay — shown without losing current group */}
+      {groupCreateModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 995, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setGroupCreateModal(null)}>
+          <div style={{ background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+
+            {groupCreateModal === "create" && (
+              <>
+                <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 2, marginBottom: 20 }}>CREATE A GROUP</div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Group Name</div>
+                  <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="e.g. The Boys, Work Crew..."
+                    style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 10, fontWeight: 600 }}>Group Type</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {["open", "closed"].map(t => (
+                      <button key={t} onClick={() => setNewGroupType(t)} style={{ flex: 1, background: newGroupType === t ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${newGroupType === t ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "12px 8px", color: newGroupType === t ? "#f97316" : "#888", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                        {t === "open" ? "🌐 Open" : "🔒 Closed"}
+                        <div style={{ fontSize: 10, fontWeight: 400, marginTop: 4, color: "#666" }}>{t === "open" ? "Anyone can join" : "Invite only"}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={handleCreateGroup} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                  CREATE GROUP 🚀
+                </button>
+              </>
+            )}
+
+            {groupCreateModal === "join" && (
+              <>
+                <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 2, marginBottom: 20 }}>JOIN WITH CODE</div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Invite Code</div>
+                  <input value={joinCodeInput} onChange={e => setJoinCodeInput(e.target.value.toUpperCase())} placeholder="e.g. ABC123" maxLength={6}
+                    style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 20, outline: "none", boxSizing: "border-box", textAlign: "center", letterSpacing: 4, fontFamily: "'Space Mono', monospace", fontWeight: 700 }} />
+                </div>
+                <button onClick={handleRequestJoin} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+                  JOIN GROUP
+                </button>
+              </>
+            )}
+
+            <button onClick={() => setGroupCreateModal(null)} style={{ width: "100%", background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 14 }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* Group switcher modal */}
       {groupSwitcherOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 990, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setGroupSwitcherOpen(false)}>
@@ -1282,8 +1334,8 @@ export default function App() {
               </div>
             ))}
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              <button onClick={() => { setGroupSwitcherOpen(false); setGroupScreen("create"); setCurrentGroup(null); }} style={{ flex: 1, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 12, padding: 12, color: "#f97316", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>+ Create New</button>
-              <button onClick={() => { setGroupSwitcherOpen(false); setGroupScreen("join"); setCurrentGroup(null); }} style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 12, color: "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Join with Code</button>
+              <button onClick={() => { setGroupSwitcherOpen(false); setGroupCreateModal("create"); }} style={{ flex: 1, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 12, padding: 12, color: "#f97316", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>+ Create New</button>
+              <button onClick={() => { setGroupSwitcherOpen(false); setGroupCreateModal("join"); }} style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: 12, color: "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Join with Code</button>
             </div>
             <button onClick={() => setGroupSwitcherOpen(false)} style={{ width: "100%", background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, marginTop: 12 }}>Cancel</button>
           </div>
