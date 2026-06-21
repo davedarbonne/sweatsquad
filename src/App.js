@@ -718,6 +718,17 @@ export default function App() {
       if ((group.pendingMembers || []).includes(userName)) { showToast("Request already sent!", "error"); return; }
       const updated = { ...group, pendingMembers: [...(group.pendingMembers || []), userName] };
       await saveGroup(updated);
+      // Save a join request notification for the Cloud Function to pick up
+      try {
+        await addDoc(collection(db, "joinRequests"), {
+          groupId: group.id,
+          groupName: group.name,
+          requester: userName,
+          admins: group.admins || [],
+          ts: Date.now(),
+          notified: false,
+        });
+      } catch (_) {}
       showToast("Request sent! Wait for admin approval 🙏");
     }
     setJoinCodeInput("");
@@ -1673,7 +1684,7 @@ export default function App() {
                         </button>
                         {lbReactionPicker === entry.user && (
                           <div style={{ position: "absolute", bottom: "100%", right: 0, background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, padding: "6px 8px", display: "flex", gap: 4, zIndex: 50, marginBottom: 4, whiteSpace: "nowrap" }}>
-                            {["🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
+                            {["👍","🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
                               <button key={e} onClick={() => handleLeaderboardReact(ch.id, entry.user, e)}
                                 style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "2px 4px", borderRadius: 6 }}>
                                 {e}
@@ -1809,7 +1820,7 @@ export default function App() {
                           )}
                           {reactionPicker === msg.id && (
                             <div style={{ position: "absolute", bottom: "100%", left: isMe ? "auto" : 0, right: isMe ? 0 : "auto", background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, padding: "6px 8px", display: "flex", gap: 4, zIndex: 50, marginBottom: 4 }}>
-                              {["🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
+                              {["👍","🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
                                 <button key={e} onClick={() => handleReact(msg.id, e)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "2px 4px", borderRadius: 6, transition: "background 0.15s" }}
                                   onMouseEnter={ev => ev.target.style.background = "rgba(255,255,255,0.1)"}
                                   onMouseLeave={ev => ev.target.style.background = "none"}>
