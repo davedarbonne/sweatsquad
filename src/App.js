@@ -137,6 +137,8 @@ export default function App() {
   const [newBadges, setNewBadges] = useState([]);
   const [streakInfo, setStreakInfo] = useState(null); // { days, isNew, milestone }
   const [streakBanner, setStreakBanner] = useState(null);
+  const [monthlyRecap, setMonthlyRecap] = useState(null); // recap data object
+  const [showRecap, setShowRecap] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -221,6 +223,120 @@ export default function App() {
     });
     return () => unsub();
   }, [currentGroup?.id, lastReadTs, userName]); // eslint-disable-line
+
+  // Monthly recap — show for first 3 days of month
+  useEffect(() => {
+    if (!currentGroup || !challenges.length || !userName) return;
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    if (dayOfMonth > 3) return; // only show first 3 days
+
+    const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const recapKey = `sweatsquad_recap_${currentGroup.id}_${lastMonthYear}_${lastMonth}`;
+    if (localStorage.getItem(recapKey)) return; // already seen
+
+    // Calculate last month's stats
+    const isLastMonth = (ts) => {
+      const d = new Date(ts);
+      return d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear;
+    };
+
+    const monthName = new Date(lastMonthYear, lastMonth, 1).toLocaleString("en-US", { month: "long" });
+    const members = new Set();
+    challenges.forEach(ch => (ch.logs || []).forEach(l => members.add(l.user)));
+
+    // Per-user stats for last month
+    const userStats = {};
+    [...members].forEach(user => {
+      let reps = 0, completedChallenges = 0, points = 0, badges = 0, streak = 0;
+      const logDates = new Set();
+
+      challenges.forEach(ch => {
+        const monthLogs = (ch.logs || []).filter(l => l.user === user && isLastMonth(l.ts));
+        const monthTotal = monthLogs.reduce((a, l) => a + l.amount, 0);
+        reps += monthTotal;
+        monthLogs.forEach(l => logDates.add(new Date(l.ts).toISOString().slice(0, 10)));
+
+        // completed in last month
+        if (monthTotal > 0) {
+          const allLogs = (ch.logs || []).filter(l => l.user === user);
+          const allTotal = allLogs.reduce((a, l) => a + l.amount, 0);
+          if (allTotal >= ch.goal) {
+            const sorted = allLogs.sort((a, b) => a.ts - b.ts);
+            let running = 0;
+            for (const log of sorted) {
+              running += log.amount;
+              if (running >= ch.goal && isLastMonth(log.ts)) { completedChallenges++; break; }
+            }
+          }
+        }
+      });
+
+      // Monthly streak
+      const sortedDays = [...logDates].sort();
+      let curStreak = 1, maxStreak = sortedDays.length > 0 ? 1 : 0;
+      for (let i = 1; i < sortedDays.length; i++) {
+        const diff = (new Date(sortedDays[i]) - new Date(sortedDays[i-1])) / 86400000;
+        if (diff === 1) { curStreak++; maxStreak = Math.max(maxStreak, curStreak); }
+        else curStreak = 1;
+      }
+
+      // Monthly points: completion + badges
+      let monthPoints = 0;
+      challenges.forEach(ch => {
+        const completers = [];
+        const userTotals = {};
+        (ch.logs || []).filter(l => isLastMonth(l.ts)).forEach(l => {
+          userTotals[l.user] = (userTotals[l.user] || 0) + l.amount;
+        });
+        Object.entries(userTotals).forEach(([u, total]) => {
+          if (total >= ch.goal) {
+            const logs = (ch.logs || []).filter(l => l.user === u && isLastMonth(l.ts));
+            let running = 0, completedTs = null;
+            for (const log of logs.sort((a,b) => a.ts - b.ts)) {
+              running += log.amount;
+              if (running >= ch.goal) { completedTs = log.ts; break; }
+            }
+            if (completedTs) completers.push({ user: u, completedTs });
+          }
+        });
+        completers.sort((a, b) => a.completedTs - b.completedTs);
+        const rank = completers.findIndex(c => c.user === user);
+        if (rank === 0) monthPoints += 5;
+        else if (rank === 1) monthPoints += 4;
+        else if (rank === 2) monthPoints += 3;
+        else if (rank > 2) monthPoints += 2;
+      });
+
+      // Badges earned this month (approximate — count all current badges)
+      const allBadges = getUserBadges(user, challenges, messages, 0);
+      badges = allBadges.length;
+
+      userStats[user] = { reps, completedChallenges, points: monthPoints, badges, streak: maxStreak };
+    });
+
+    // Group totals
+    const totalReps = Object.values(userStats).reduce((a, s) => a + s.reps, 0);
+    const totalCompleted = Object.values(userStats).reduce((a, s) => a + s.completedChallenges, 0);
+    const ranked = Object.entries(userStats).sort((a, b) => b[1].points - a[1].points);
+
+    if (ranked.length === 0 || totalReps === 0) return; // nothing to show
+
+    const mvp = ranked[0][0];
+    const mostReps = Object.entries(userStats).sort((a, b) => b[1].reps - a[1].reps)[0];
+    const mostCompleted = Object.entries(userStats).sort((a, b) => b[1].completedChallenges - a[1].completedChallenges)[0];
+    const longestStreak = Object.entries(userStats).sort((a, b) => b[1].streak - a[1].streak)[0];
+
+    setMonthlyRecap({
+      monthName, lastMonthYear, ranked, userStats, totalReps, totalCompleted,
+      mvp, mostReps: mostReps[0], mostRepsCount: mostReps[1].reps,
+      mostCompleted: mostCompleted[0], mostCompletedCount: mostCompleted[1].completedChallenges,
+      longestStreak: longestStreak[0], longestStreakDays: longestStreak[1].streak,
+      recapKey,
+    });
+    setShowRecap(true);
+  }, [currentGroup?.id, challenges.length, userName]); // eslint-disable-line
 
   // Watch pending join requests for admins
   useEffect(() => {
@@ -1414,6 +1530,88 @@ export default function App() {
               Leave Group
             </button>
             <button onClick={() => setGroupSettingsOpen(false)} style={{ width: "100%", background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 14, marginTop: 8 }}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Recap Modal */}
+      {showRecap && monthlyRecap && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 1001, overflowY: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 16px 40px" }}>
+          <div style={{ width: "100%", maxWidth: 420, position: "relative" }}>
+            {/* Header */}
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+              <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 3, marginBottom: 8 }}>MONTHLY RECAP</div>
+              <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 42, letterSpacing: 3, color: "#fff", lineHeight: 1 }}>{monthlyRecap.monthName.toUpperCase()}</div>
+              <div style={{ fontSize: 12, color: "#555", fontFamily: "'Space Mono', monospace", marginTop: 4 }}>{monthlyRecap.lastMonthYear}</div>
+            </div>
+
+            {/* MVP */}
+            <div style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.15), rgba(251,191,36,0.1))", border: "1.5px solid rgba(249,115,22,0.4)", borderRadius: 20, padding: 24, marginBottom: 16, textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 3, marginBottom: 12 }}>🏆 MONTHLY CHAMPION</div>
+              <Avatar name={monthlyRecap.mvp} size={64} />
+              <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 32, letterSpacing: 2, marginTop: 10, color: "#fbbf24" }}>{monthlyRecap.mvp}</div>
+              <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>{monthlyRecap.ranked[0][1].points} pts · {monthlyRecap.ranked[0][1].completedChallenges} challenges · {monthlyRecap.ranked[0][1].reps.toLocaleString()} reps</div>
+            </div>
+
+            {/* Points Leaderboard */}
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 12 }}>POINTS LEADERBOARD</div>
+              {monthlyRecap.ranked.map(([user, stats], i) => (
+                <div key={user} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: i < monthlyRecap.ranked.length - 1 ? 10 : 0 }}>
+                  <div style={{ fontSize: 18, width: 28, textAlign: "center" }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i+1}.`}</div>
+                  <Avatar name={user} size={32} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{user}</div>
+                    <div style={{ fontSize: 11, color: "#666" }}>{stats.completedChallenges} completed · {stats.reps.toLocaleString()} reps</div>
+                  </div>
+                  <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: i === 0 ? "#fbbf24" : "#f97316" }}>{stats.points}<span style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace" }}> pts</span></div>
+                </div>
+              ))}
+            </div>
+
+            {/* Individual Awards */}
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 14 }}>INDIVIDUAL AWARDS</div>
+              {[
+                { icon: "💪", label: "Most Reps", winner: monthlyRecap.mostReps, stat: `${monthlyRecap.mostRepsCount.toLocaleString()} reps` },
+                { icon: "✅", label: "Most Challenges", winner: monthlyRecap.mostCompleted, stat: `${monthlyRecap.mostCompletedCount} completed` },
+                { icon: "🔥", label: "Longest Streak", winner: monthlyRecap.longestStreak, stat: `${monthlyRecap.longestStreakDays} days` },
+              ].map(award => (
+                <div key={award.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 24, width: 36, textAlign: "center" }}>{award.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace" }}>{award.label}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{award.winner}</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#f97316", fontFamily: "'Space Mono', monospace", fontWeight: 700 }}>{award.stat}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Group totals */}
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 24 }}>
+              <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 14 }}>SQUAD TOTALS</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {[
+                  { label: "Total Reps", value: monthlyRecap.totalReps.toLocaleString() },
+                  { label: "Challenges Done", value: monthlyRecap.totalCompleted },
+                  { label: "Active Members", value: monthlyRecap.ranked.length },
+                  { label: "Month", value: monthlyRecap.monthName.slice(0, 3).toUpperCase() },
+                ].map(s => (
+                  <div key={s.label} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px 14px", textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, color: "#f97316" }}>{s.value}</div>
+                    <div style={{ fontSize: 10, color: "#666", fontFamily: "'Space Mono', monospace", marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={() => {
+              localStorage.setItem(monthlyRecap.recapKey, "seen");
+              setShowRecap(false);
+            }} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 14, padding: 16, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 18, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2 }}>
+              SEE YOU NEXT MONTH 💪
+            </button>
           </div>
         </div>
       )}
