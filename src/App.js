@@ -120,7 +120,7 @@ export default function App() {
   const [challenges, setChallenges] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [logAmount, setLogAmount] = useState("");
-  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "" });
+  const [newChallenge, setNewChallenge] = useState({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "", goalType: "total", dailyGoal: "" });
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [badgesExpanded, setBadgesExpanded] = useState(false);
@@ -723,23 +723,27 @@ export default function App() {
   };
 
   const handleCreateChallenge = async () => {
-    if (!newChallenge.name || !newChallenge.unit || !newChallenge.goal) {
-      showToast("Fill all fields", "error"); return;
+    if (!newChallenge.name || !newChallenge.unit) { showToast("Fill all fields", "error"); return; }
+    if (newChallenge.goalType === "daily" && (!newChallenge.dailyGoal || !newChallenge.durationDays)) {
+      showToast("Daily challenges need a daily goal and duration", "error"); return;
     }
+    if (newChallenge.goalType === "total" && !newChallenge.goal) { showToast("Fill all fields", "error"); return; }
     const ch = {
       id: Date.now().toString(),
       name: newChallenge.name,
       unit: newChallenge.unit,
-      goal: parseFloat(newChallenge.goal),
+      goal: newChallenge.goalType === "daily" ? parseFloat(newChallenge.dailyGoal) * parseInt(newChallenge.durationDays || 1) : parseFloat(newChallenge.goal),
       emoji: newChallenge.emoji,
       durationDays: newChallenge.durationDays ? parseInt(newChallenge.durationDays) : null,
+      goalType: newChallenge.goalType || "total",
+      dailyGoal: newChallenge.goalType === "daily" && newChallenge.dailyGoal ? parseFloat(newChallenge.dailyGoal) : null,
       videoUrl: newChallenge.videoUrl || null,
       description: newChallenge.description || null,
       createdBy: userName || "Anonymous",
       createdAt: Date.now(),
       logs: [],
     };
-    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "" });
+    setNewChallenge({ name: "", unit: "", goal: "", emoji: "💪", durationDays: "", videoUrl: "", description: "", goalType: "total", dailyGoal: "" });
     setSelectedChallenge(null);
     setScreen("home");
     setShowArchive(false);
@@ -1022,6 +1026,24 @@ export default function App() {
     if (streak === 3) return 1;
     if (streak > 3 && streak % 7 === 0) return 2;
     return 0;
+  };
+
+  const getDailyTotal = (ch, user, dateStr) => {
+    return (ch.logs || []).filter(l => l.user === user && l.date === dateStr).reduce((a, l) => a + l.amount, 0);
+  };
+
+  const getDailyGrid = (ch, user) => {
+    if (!ch.dailyGoal || !ch.durationDays) return [];
+    return Array.from({ length: ch.durationDays }, (_, i) => {
+      const d = new Date(ch.createdAt + i * 86400000);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayTotal = getDailyTotal(ch, user, dateStr);
+      const hit = dayTotal >= ch.dailyGoal;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isToday = dateStr === todayStr;
+      const isPast = dateStr < todayStr;
+      return { dateStr, dayTotal, hit, isToday, isPast, dayNum: i + 1 };
+    });
   };
 
   const getYouTubeId = (url) => {
@@ -1749,6 +1771,11 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
+                          {ch.dailyGoal && (() => {
+                            const todayTotal = getDailyTotal(ch, userName, new Date().toISOString().slice(0, 10));
+                            const todayDone = todayTotal >= ch.dailyGoal;
+                            return <div style={{ fontSize: 11, marginTop: 3, color: todayDone ? "#4ade80" : "#aaa" }}>{todayDone ? "✅ Today's goal hit!" : `📅 Today: ${todayTotal}/${ch.dailyGoal} ${ch.unit}`}</div>;
+                          })()}
                           {getCountdown(ch) && (
                             <div style={{ fontSize: 11, marginTop: 4, fontFamily: "'Space Mono', monospace", color: isExpired(ch) ? "#ef4444" : "#f97316", fontWeight: 700 }}>
                               {isExpired(ch) ? "🔴 ENDED" : `⏱ ${getCountdown(ch)}`}
@@ -1847,13 +1874,56 @@ export default function App() {
                   <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>This challenge has ended. Final standings are locked in.</div>
                 </div>
               )}
-              <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 20 }}>
+              <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: ch.dailyGoal ? 12 : 20 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                   <div style={{ fontWeight: 700 }}>Your Progress</div>
                   <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, color: "#f97316" }}>{myTotal.toLocaleString()} / {ch.goal.toLocaleString()}</div>
                 </div>
                 <ProgressBar pct={myPct} color={completed ? "#4ade80" : "#f97316"} />
               </div>
+
+              {ch.dailyGoal && (() => {
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const todayTotal = getDailyTotal(ch, userName, todayStr);
+                const todayPct = Math.min(100, (todayTotal / ch.dailyGoal) * 100);
+                const todayDone = todayTotal >= ch.dailyGoal;
+                const grid = getDailyGrid(ch, userName);
+                return (
+                  <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 20 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ fontWeight: 700 }}>Today's Goal</div>
+                      <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, color: todayDone ? "#4ade80" : "#f97316" }}>
+                        {todayDone ? "✅ Done!" : `${todayTotal} / ${ch.dailyGoal} ${ch.unit}`}
+                      </div>
+                    </div>
+                    <ProgressBar pct={todayPct} color={todayDone ? "#4ade80" : "#f97316"} />
+                    {grid.length > 0 && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 1, marginBottom: 8 }}>DAILY STREAK</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {grid.map(day => (
+                            <div key={day.dateStr} title={`Day ${day.dayNum}: ${day.dayTotal} ${ch.unit}`}
+                              style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, fontFamily: "'Space Mono', monospace",
+                                background: day.hit ? "rgba(74,222,128,0.2)" : day.isToday ? "rgba(249,115,22,0.15)" : day.isPast ? "rgba(239,68,68,0.1)" : "rgba(255,255,255,0.04)",
+                                border: `1px solid ${day.hit ? "rgba(74,222,128,0.4)" : day.isToday ? "rgba(249,115,22,0.5)" : day.isPast ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.08)"}`,
+                                color: day.hit ? "#4ade80" : day.isToday ? "#f97316" : day.isPast ? "#ef4444" : "#555"
+                              }}>
+                              {day.hit ? "✓" : day.dayNum}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 10 }}>
+                          <span style={{ color: "#4ade80" }}>✓ Hit</span>
+                          <span style={{ color: "#ef4444" }}>✗ Missed</span>
+                          <span style={{ color: "#f97316" }}>Today</span>
+                          <span style={{ color: "#555" }}>Upcoming</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <SectionLabel>LEADERBOARD</SectionLabel>
               {lb.length === 0 && <div style={{ color: "#555", fontSize: 14 }}>No entries yet. Be the first!</div>}
               {lb.map((entry, i) => {
@@ -1924,20 +1994,39 @@ export default function App() {
               ))}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 8, fontWeight: 600 }}>Goal Type</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {[{ id: "total", label: "🎯 Total Goal", sub: "e.g. 1,000 pushups total" }, { id: "daily", label: "📅 Daily Goal", sub: "e.g. 50 pushups/day" }].map(t => (
+                    <button key={t.id} onClick={() => setNewChallenge(p => ({ ...p, goalType: t.id }))}
+                      style={{ flex: 1, background: newChallenge.goalType === t.id ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${newChallenge.goalType === t.id ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "10px 8px", color: newChallenge.goalType === t.id ? "#f97316" : "#888", fontWeight: 700, cursor: "pointer", fontSize: 13, textAlign: "center" }}>
+                      {t.label}
+                      <div style={{ fontSize: 10, fontWeight: 400, marginTop: 3, color: "#555" }}>{t.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
               {[
                 { label: "Challenge Name", key: "name", placeholder: "e.g. 30-Day Pushup Challenge" },
                 { label: "Unit", key: "unit", placeholder: "e.g. pushups, miles, steps" },
-                { label: "Goal (total)", key: "goal", placeholder: "e.g. 1000", type: "number" },
-                { label: "Duration (days, optional)", key: "durationDays", placeholder: "e.g. 30  —  leave blank for no limit", type: "number" },
+                ...(newChallenge.goalType === "daily"
+                  ? [{ label: "Daily Goal", key: "dailyGoal", placeholder: "e.g. 50", type: "number" }]
+                  : [{ label: "Total Goal", key: "goal", placeholder: "e.g. 1000", type: "number" }]),
+                { label: "Duration (days" + (newChallenge.goalType === "daily" ? ", required)" : ", optional)"), key: "durationDays", placeholder: newChallenge.goalType === "daily" ? "e.g. 30" : "e.g. 30  —  leave blank for no limit", type: "number" },
                 { label: "Emoji", key: "emoji", placeholder: "💪" },
                 { label: "Instructional Video (YouTube URL, optional)", key: "videoUrl", placeholder: "https://youtube.com/watch?v=..." },
               ].map(f => (
                 <div key={f.key}>
                   <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>{f.label}</div>
-                  <input type={f.type || "text"} value={newChallenge[f.key]} onChange={e => setNewChallenge(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder}
+                  <input type={f.type || "text"} value={newChallenge[f.key] || ""} onChange={e => setNewChallenge(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder}
                     style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
                 </div>
               ))}
+              {newChallenge.goalType === "daily" && newChallenge.dailyGoal && newChallenge.durationDays && (
+                <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#4ade80" }}>
+                  Total: {(parseFloat(newChallenge.dailyGoal) * parseInt(newChallenge.durationDays)).toLocaleString()} {newChallenge.unit || "reps"} ({newChallenge.dailyGoal}/day × {newChallenge.durationDays} days)
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: 12, color: "#888", marginBottom: 6, fontWeight: 600 }}>Description (optional)</div>
                 <textarea value={newChallenge.description} onChange={e => setNewChallenge(p => ({ ...p, description: e.target.value }))}
