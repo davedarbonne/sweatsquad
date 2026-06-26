@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, auth, googleProvider } from "./firebase";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
-import { doc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "firebase/auth";
 
 const VAPID_KEY = "BObS3r8ohcb3-voKgEidcDFOnHaD8IayMPQrbaq9hEGFgus_0R7_9BfRomHU5ODLsBMJw6_F0Nc1v5CYQIz6sgA";
@@ -42,17 +42,42 @@ const CHALLENGE_TEMPLATES = [
   { name: "Burpee Blitz", unit: "burpees", goal: 500, emoji: "🔥", durationDays: 14 },
 ];
 
-function Avatar({ name, size = 36 }) {
-  const colors = ["#e74c3c","#e67e22","#f1c40f","#2ecc71","#1abc9c","#3498db","#9b59b6","#e91e63"];
-  const idx = name.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
+const AVATAR_COLORS = ["#e74c3c","#e67e22","#f1c40f","#2ecc71","#1abc9c","#3498db","#9b59b6","#e91e63","#ff6b6b","#4ecdc4","#45b7d1","#96ceb4"];
+const AVATAR_TEXT_COLORS = ["#ffffff","#000000","#f97316","#fbbf24","#4ade80","#60a5fa"];
+
+// Global avatar cache so all Avatar instances stay in sync
+let _avatarProfiles = {};
+let _avatarListeners = [];
+const setAvatarProfiles = (profiles) => {
+  _avatarProfiles = profiles;
+  _avatarListeners.forEach(fn => fn(profiles));
+};
+const subscribeAvatars = (fn) => {
+  _avatarListeners.push(fn);
+  return () => { _avatarListeners = _avatarListeners.filter(f => f !== fn); };
+};
+
+function Avatar({ name, size = 36, onClick, avatarProfiles }) {
+  const profile = (avatarProfiles || _avatarProfiles)[name];
+  const defaultColors = ["#e74c3c","#e67e22","#f1c40f","#2ecc71","#1abc9c","#3498db","#9b59b6","#e91e63"];
+  const idx = name ? name.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % defaultColors.length : 0;
+  const bgColor = profile?.bgColor || defaultColors[idx];
+  const textColor = profile?.textColor || "#fff";
+  const display = profile?.type === "emoji" ? profile.value
+    : profile?.type === "face" ? profile.value
+    : profile?.type === "two" ? (profile.value || name?.slice(0,2).toUpperCase())
+    : profile?.value || name?.[0]?.toUpperCase() || "?";
+  const isEmoji = profile?.type === "emoji" || profile?.type === "face";
   return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%", background: colors[idx],
+    <div onClick={onClick} style={{
+      width: size, height: size, borderRadius: "50%", background: bgColor,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontWeight: 800, fontSize: size * 0.4, color: "#fff", flexShrink: 0,
-      fontFamily: "'Bebas Neue', cursive", letterSpacing: 1
+      fontWeight: 800, fontSize: isEmoji ? size * 0.55 : (display?.length > 1 ? size * 0.32 : size * 0.4),
+      color: textColor, flexShrink: 0,
+      fontFamily: isEmoji ? "inherit" : "'Bebas Neue', cursive", letterSpacing: isEmoji ? 0 : 1,
+      cursor: onClick ? "pointer" : "default",
     }}>
-      {name[0]?.toUpperCase()}
+      {display}
     </div>
   );
 }
@@ -136,6 +161,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [newBadges, setNewBadges] = useState([]);
   const [streakInfo, setStreakInfo] = useState(null); // { days, isNew, milestone }
+  const [avatarProfiles, setAvatarProfilesState] = useState({});
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarTab, setAvatarTab] = useState("emoji");
+  const [avatarDraft, setAvatarDraft] = useState({ type: "letter", value: "", bgColor: "#f97316", textColor: "#ffffff" });
   const [streakBanner, setStreakBanner] = useState(null);
   const [monthlyRecap, setMonthlyRecap] = useState(null); // recap data object
   const [showRecap, setShowRecap] = useState(false);
@@ -170,6 +199,23 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  // Load avatar profiles from Firestore (global across groups)
+  useEffect(() => {
+    const ref = doc(db, "sweatsquad", "avatars");
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        const profiles = snap.data().profiles || {};
+        setAvatarProfilesState(profiles);
+        setAvatarProfiles(profiles);
+        // Pre-populate draft with current user's profile
+        if (userName && profiles[userName]) {
+          setAvatarDraft(profiles[userName]);
+        }
+      }
+    });
+    return () => unsub();
+  }, [userName]); // eslint-disable-line
 
   // Load user's groups
   useEffect(() => {
@@ -468,6 +514,16 @@ export default function App() {
     setUserName("");
     localStorage.removeItem("sweatsquad_username");
     setScreen("home");
+  };
+
+  const handleSaveAvatar = async () => {
+    const ref = doc(db, "sweatsquad", "avatars");
+    const snap = await getDoc(ref);
+    const profiles = snap.exists() ? (snap.data().profiles || {}) : {};
+    profiles[userName] = avatarDraft;
+    await setDoc(ref, { profiles });
+    setAvatarPickerOpen(false);
+    showToast("Avatar updated! 🎨");
   };
 
   const handleUpdateReminderTime = async (time) => {
@@ -1388,7 +1444,7 @@ export default function App() {
           display: "flex", alignItems: "center", gap: 12,
           boxShadow: "0 4px 24px rgba(0,0,0,0.6)", maxWidth: 360, width: "calc(100% - 32px)"
         }}>
-          <Avatar name={mentionAlert.user} size={32} />
+          <Avatar name={mentionAlert.user} size={32} avatarProfiles={avatarProfiles} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: "#f97316", fontWeight: 700 }}>{mentionAlert.user} mentioned you 👋</div>
             <div style={{ fontSize: 13, color: "#ccc", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mentionAlert.text}</div>
@@ -1531,7 +1587,7 @@ export default function App() {
               const isMe = m === userName;
               return (
                 <div key={m} style={{ display: "flex", alignItems: "center", gap: 10, background: isMe ? "rgba(249,115,22,0.06)" : "rgba(255,255,255,0.03)", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
-                  <Avatar name={m} size={32} />
+                  <Avatar name={m} size={32} avatarProfiles={avatarProfiles} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{m}{isMe ? " (you)" : ""}</div>
                     {isAdminMember && <div style={{ fontSize: 10, color: "#f97316", fontFamily: "'Space Mono', monospace" }}>ADMIN</div>}
@@ -1570,7 +1626,7 @@ export default function App() {
             {/* MVP */}
             <div style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.15), rgba(251,191,36,0.1))", border: "1.5px solid rgba(249,115,22,0.4)", borderRadius: 20, padding: 24, marginBottom: 16, textAlign: "center" }}>
               <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 3, marginBottom: 12 }}>🏆 MONTHLY CHAMPION</div>
-              <Avatar name={monthlyRecap.mvp} size={64} />
+              <Avatar name={monthlyRecap.mvp} size={64} avatarProfiles={avatarProfiles} />
               <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 32, letterSpacing: 2, marginTop: 10, color: "#fbbf24" }}>{monthlyRecap.mvp}</div>
               <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>{monthlyRecap.ranked[0][1].points} pts · {monthlyRecap.ranked[0][1].completedChallenges} challenges · {monthlyRecap.ranked[0][1].reps.toLocaleString()} reps</div>
             </div>
@@ -1581,7 +1637,7 @@ export default function App() {
               {monthlyRecap.ranked.map(([user, stats], i) => (
                 <div key={user} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: i < monthlyRecap.ranked.length - 1 ? 10 : 0 }}>
                   <div style={{ fontSize: 18, width: 28, textAlign: "center" }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i+1}.`}</div>
-                  <Avatar name={user} size={32} />
+                  <Avatar name={user} size={32} avatarProfiles={avatarProfiles} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{user}</div>
                     <div style={{ fontSize: 11, color: "#666" }}>{stats.completedChallenges} completed · {stats.reps.toLocaleString()} reps</div>
@@ -1638,6 +1694,113 @@ export default function App() {
         </div>
       )}
 
+      {/* Avatar Picker Modal */}
+      {avatarPickerOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 995, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setAvatarPickerOpen(false)}>
+          <div style={{ background: "#1a1a1f", borderRadius: "20px 20px 0 0", padding: 24, width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, letterSpacing: 2, marginBottom: 20 }}>CUSTOMIZE AVATAR</div>
+
+            {/* Preview */}
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+              <Avatar name={userName} size={80} avatarProfiles={{ [userName]: avatarDraft }} />
+            </div>
+
+            {/* Type tabs */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
+              {[{ id: "emoji", label: "😀 Emoji" }, { id: "face", label: "🙂 Face" }, { id: "letter", label: "A Letter" }, { id: "two", label: "AB Two" }].map(t => (
+                <button key={t.id} onClick={() => setAvatarTab(t.id)}
+                  style={{ flexShrink: 0, background: avatarTab === t.id ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${avatarTab === t.id ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "8px 14px", color: avatarTab === t.id ? "#f97316" : "#888", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Emoji picker */}
+            {avatarTab === "emoji" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 8 }}>PICK AN EMOJI</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {["🏋️","💪","🔥","🏃","🧘","🤸","⚡","🥊","🏆","🎯","🚀","💥","🌊","🐢","👑","🎖️","🤯","😤","😎","🥇","🦁","🐺","🦊","🐯","🦅","🌟","❤️","🍕","🎸","🎮"].map(e => (
+                    <button key={e} onClick={() => setAvatarDraft(d => ({ ...d, type: "emoji", value: e }))}
+                      style={{ width: 42, height: 42, background: avatarDraft.value === e && avatarDraft.type === "emoji" ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${avatarDraft.value === e && avatarDraft.type === "emoji" ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.08)"}`, borderRadius: 10, fontSize: 22, cursor: "pointer" }}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Face picker */}
+            {avatarTab === "face" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 8 }}>PICK A FACE</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {["😀","😎","🤩","😤","😤","🥳","🤔","😏","😁","🙂","😈","👿","🤠","🧐","🥸","😴","🤑","😤","💀","👽","🤖","👾","🦸","🧙","🥷","💆","🙆","🤦","🤷","💪"].map(e => (
+                    <button key={e} onClick={() => setAvatarDraft(d => ({ ...d, type: "face", value: e }))}
+                      style={{ width: 42, height: 42, background: avatarDraft.value === e && avatarDraft.type === "face" ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${avatarDraft.value === e && avatarDraft.type === "face" ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.08)"}`, borderRadius: 10, fontSize: 22, cursor: "pointer" }}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Letter picker */}
+            {avatarTab === "letter" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 8 }}>PICK A LETTER</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(l => (
+                    <button key={l} onClick={() => setAvatarDraft(d => ({ ...d, type: "letter", value: l }))}
+                      style={{ width: 38, height: 38, background: avatarDraft.value === l && avatarDraft.type === "letter" ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.04)", border: `1px solid ${avatarDraft.value === l && avatarDraft.type === "letter" ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.08)"}`, borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15, fontFamily: "'Bebas Neue', cursive" }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Two letters */}
+            {avatarTab === "two" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 8 }}>TYPE UP TO 2 LETTERS</div>
+                <input value={avatarDraft.type === "two" ? avatarDraft.value : ""} maxLength={2}
+                  onChange={e => setAvatarDraft(d => ({ ...d, type: "two", value: e.target.value.toUpperCase() }))}
+                  placeholder="e.g. DD"
+                  style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 28, outline: "none", boxSizing: "border-box", textAlign: "center", letterSpacing: 8, fontFamily: "'Bebas Neue', cursive", fontWeight: 700 }} />
+              </div>
+            )}
+
+            {/* Background color */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 8 }}>CIRCLE COLOR</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {AVATAR_COLORS.map(c => (
+                  <button key={c} onClick={() => setAvatarDraft(d => ({ ...d, bgColor: c }))}
+                    style={{ width: 36, height: 36, borderRadius: "50%", background: c, border: `3px solid ${avatarDraft.bgColor === c ? "#fff" : "transparent"}`, cursor: "pointer" }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Text color */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 8 }}>TEXT / EMOJI COLOR</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {AVATAR_TEXT_COLORS.map(c => (
+                  <button key={c} onClick={() => setAvatarDraft(d => ({ ...d, textColor: c }))}
+                    style={{ width: 36, height: 36, borderRadius: "50%", background: c, border: `3px solid ${avatarDraft.textColor === c ? "#f97316" : "rgba(255,255,255,0.2)"}`, cursor: "pointer" }} />
+                ))}
+              </div>
+            </div>
+
+            <button onClick={handleSaveAvatar} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
+              SAVE AVATAR
+            </button>
+            <button onClick={() => setAvatarPickerOpen(false)} style={{ width: "100%", background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 14 }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {badgeModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 990, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setBadgeModal(null)}>
           <div style={{ background: "#1a1a1f", border: `1.5px solid ${badgeModal.earned ? "rgba(249,115,22,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 20, padding: 28, maxWidth: 320, width: "100%", textAlign: "center" }} onClick={e => e.stopPropagation()}>
@@ -1690,7 +1853,7 @@ export default function App() {
                 </div>
               ) : null;
             })()}
-            {userName && <Avatar name={userName} size={42} />}
+            {userName && <Avatar name={userName} size={42} avatarProfiles={avatarProfiles} onClick={() => { setAvatarPickerOpen(true); setAvatarDraft(avatarProfiles[userName] || { type: "letter", value: userName[0]?.toUpperCase(), bgColor: "#f97316", textColor: "#ffffff" }); }} />}
           </div>
         </div>
 
@@ -1935,7 +2098,7 @@ export default function App() {
                     <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 24, textAlign: "center" }}>
                       {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                     </div>
-                    <Avatar name={entry.user} size={34} />
+                    <Avatar name={entry.user} size={34} avatarProfiles={avatarProfiles} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{entry.user}{entry.user === userName ? " (you)" : ""}</div>
                       <div style={{ marginTop: 4 }}><ProgressBar pct={entry.pct} color={i === 0 ? "#fbbf24" : "#f97316"} /></div>
@@ -2144,7 +2307,7 @@ export default function App() {
                         <button key={u} onClick={() => insertMention(u)} style={{ width: "100%", background: "none", border: "none", padding: "10px 16px", color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 14, display: "flex", alignItems: "center", gap: 10 }}
                           onMouseEnter={e => e.currentTarget.style.background = "rgba(249,115,22,0.1)"}
                           onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                          <Avatar name={u} size={24} /> @{u}
+                          <Avatar name={u} size={24} avatarProfiles={avatarProfiles} /> @{u}
                         </button>
                       ))}
                     </div>
@@ -2201,7 +2364,7 @@ export default function App() {
                     <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 28, textAlign: "center", flexShrink: 0 }}>
                       {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                     </div>
-                    <Avatar name={entry.user} size={40} />
+                    <Avatar name={entry.user} size={40} avatarProfiles={avatarProfiles} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{entry.user}{isMe ? " (you)" : ""}</div>
                       <div style={{ fontSize: 11, color: "#666", marginTop: 3, display: "flex", gap: 10 }}>
