@@ -1136,7 +1136,8 @@ export default function App() {
   };
 
   const handleReact = async (msgId, emoji) => {
-    const ref = doc(db, "sweatsquad", "chat");
+    if (!currentGroup) return;
+    const ref = doc(db, "groups", currentGroup.id, "data", "chat");
     const updated = messages.map(m => {
       if (m.id !== msgId) return m;
       const reactions = { ...(m.reactions || {}) };
@@ -1154,7 +1155,8 @@ export default function App() {
   };
 
   const handleDeleteMessage = async (msgId) => {
-    const ref = doc(db, "sweatsquad", "chat");
+    if (!currentGroup) return;
+    const ref = doc(db, "groups", currentGroup.id, "data", "chat");
     const updated = messages.map(m =>
       m.id === msgId ? { ...m, deleted: true, text: null, logShare: null } : m
     );
