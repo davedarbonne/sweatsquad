@@ -12,6 +12,8 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Only handles background messages (when app is not open)
+// Foreground messages are handled by onMessage() in App.js
 messaging.onBackgroundMessage((payload) => {
   const { title, body } = payload.notification;
   self.registration.showNotification(title, {
@@ -19,6 +21,8 @@ messaging.onBackgroundMessage((payload) => {
     icon: '/logo192.png',
     badge: '/logo192.png',
     data: payload.data,
+    // Tag prevents duplicate notifications on the same device
+    tag: payload.data?.messageId || title,
   });
 });
 
