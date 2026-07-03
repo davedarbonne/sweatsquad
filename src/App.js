@@ -410,10 +410,12 @@ export default function App() {
         const savedTime = localStorage.getItem("sweatsquad_reminder_time") || "07:00";
         await addDoc(tokensRef, { username: userName, token, updatedAt: Date.now(), timezone, reminderTime: savedTime });
       }
-      // Handle foreground messages
+      // Handle foreground messages — show toast only, suppresses system notification
       onMessage(messaging, (payload) => {
+        // Returning without calling showNotification() suppresses the service worker popup
+        // so we only show the in-app toast, preventing doubles
         const { title, body } = payload.notification;
-        showToast(`🔔 ${title}: ${body}`);
+        showToast(`🔔 ${body}`, "success");
       });
     } catch (err) {
       console.log("Notification setup failed:", err);
