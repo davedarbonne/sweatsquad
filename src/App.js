@@ -2091,6 +2091,26 @@ export default function App() {
                 );
               })()}
 
+              {isArchived(ch) && (
+                <button onClick={() => {
+                  setNewChallenge({
+                    name: ch.name,
+                    unit: ch.unit,
+                    goal: ch.goalType === "daily" ? "" : ch.goal.toString(),
+                    emoji: ch.emoji,
+                    durationDays: ch.durationDays ? ch.durationDays.toString() : "",
+                    videoUrl: ch.videoUrl || "",
+                    description: ch.description || "",
+                    goalType: ch.goalType || "total",
+                    dailyGoal: ch.dailyGoal ? ch.dailyGoal.toString() : "",
+                  });
+                  setScreen("create");
+                  setSelectedChallenge(null);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }} style={{ width: "100%", background: "rgba(249,115,22,0.08)", border: "1.5px solid rgba(249,115,22,0.3)", borderRadius: 14, padding: 14, color: "#f97316", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 20 }}>
+                  🔁 RUN IT BACK!
+                </button>
+              )}
               <SectionLabel>LEADERBOARD</SectionLabel>
               {lb.length === 0 && <div style={{ color: "#555", fontSize: 14 }}>No entries yet. Be the first!</div>}
               {lb.map((entry, i) => {
