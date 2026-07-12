@@ -162,6 +162,7 @@ export default function App() {
   const [newBadges, setNewBadges] = useState([]);
   const [streakInfo, setStreakInfo] = useState(null); // { days, isNew, milestone }
   const [avatarProfiles, setAvatarProfilesState] = useState({});
+  const [pendingDeepLink, setPendingDeepLink] = useState(null);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [avatarTab, setAvatarTab] = useState("emoji");
   const [avatarDraft, setAvatarDraft] = useState({ type: "letter", value: "", bgColor: "#f97316", textColor: "#ffffff" });
@@ -199,6 +200,46 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  // Check if app was opened from a notification with a deep link
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data?.type === "notification-click") {
+          const { challengeId, groupId } = event.data;
+          if (challengeId && groupId) {
+            setPendingDeepLink({ challengeId, groupId });
+          }
+        }
+      });
+    }
+    // Also check URL params (for redirect-based notification clicks)
+    const params = new URLSearchParams(window.location.search);
+    const challengeId = params.get("challengeId");
+    const groupId = params.get("groupId");
+    if (challengeId && groupId) {
+      setPendingDeepLink({ challengeId, groupId });
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
+
+  // Handle deep link once group and challenges are loaded
+  useEffect(() => {
+    if (!pendingDeepLink || !currentGroup || !challenges.length) return;
+    const { challengeId, groupId } = pendingDeepLink;
+    if (currentGroup.id !== groupId) {
+      // Switch to the right group first
+      const targetGroup = userGroups.find(g => g.id === groupId);
+      if (targetGroup) switchGroup(targetGroup);
+      return;
+    }
+    const ch = challenges.find(c => c.id === challengeId);
+    if (ch) {
+      setSelectedChallenge(ch);
+      setScreen("challenge");
+      setPendingDeepLink(null);
+    }
+  }, [pendingDeepLink, currentGroup, challenges, userGroups]); // eslint-disable-line
 
   // Load avatar profiles from Firestore (global across groups)
   useEffect(() => {
