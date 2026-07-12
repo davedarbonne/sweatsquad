@@ -28,5 +28,26 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow('/'));
+  const data = event.notification.data || {};
+  const challengeId = data.challengeId;
+  const groupId = data.groupId;
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // If app is already open, post a message to it
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          if (challengeId && groupId) {
+            client.postMessage({ type: "notification-click", challengeId, groupId });
+          }
+          return client.focus();
+        }
+      }
+      // If app is closed, open it with query params
+      const url = challengeId && groupId
+        ? `/?challengeId=${challengeId}&groupId=${groupId}`
+        : "/";
+      return clients.openWindow(url);
+    })
+  );
 });
