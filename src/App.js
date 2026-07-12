@@ -1138,6 +1138,9 @@ export default function App() {
   const handleReact = async (msgId, emoji) => {
     if (!currentGroup) return;
     const ref = doc(db, "groups", currentGroup.id, "data", "chat");
+    // Find the message owner for notification
+    const targetMsg = messages.find(m => m.id === msgId);
+    const msgOwner = targetMsg?.user;
     const updated = messages.map(m => {
       if (m.id !== msgId) return m;
       const reactions = { ...(m.reactions || {}) };
@@ -1152,6 +1155,21 @@ export default function App() {
     });
     await setDoc(ref, { messages: updated });
     setReactionPicker(null);
+    // Notify message owner if someone reacted to their message
+    if (msgOwner && msgOwner !== userName) {
+      try {
+        await addDoc(collection(db, "reactionNotifs"), {
+          type: "chat",
+          reactor: userName,
+          owner: msgOwner,
+          emoji,
+          groupId: currentGroup.id,
+          groupName: currentGroup.name,
+          ts: Date.now(),
+          notified: false,
+        });
+      } catch (_) {}
+    }
   };
 
   const handleDeleteMessage = async (msgId) => {
@@ -1164,6 +1182,23 @@ export default function App() {
   };
 
   const handleLeaderboardReact = async (challengeId, targetUser, emoji) => {
+    // Notify the person being reacted to on the leaderboard
+    if (targetUser !== userName) {
+      try {
+        const ch = challenges.find(c => c.id === challengeId);
+        await addDoc(collection(db, "reactionNotifs"), {
+          type: "leaderboard",
+          reactor: userName,
+          owner: targetUser,
+          emoji,
+          challengeName: ch?.name || "a challenge",
+          challengeEmoji: ch?.emoji || "🏆",
+          groupId: currentGroup?.id,
+          ts: Date.now(),
+          notified: false,
+        });
+      } catch (_) {}
+    }
     const updated = challenges.map(ch => {
       if (ch.id !== challengeId) return ch;
       const lbReactions = { ...(ch.lbReactions || {}) };
@@ -2091,7 +2126,7 @@ export default function App() {
                 );
               })()}
 
-              {isArchived(ch) && (
+              {isExpired(ch) && (
                 <button onClick={() => {
                   setNewChallenge({
                     name: ch.name,
