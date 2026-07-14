@@ -163,6 +163,8 @@ export default function App() {
   const [streakInfo, setStreakInfo] = useState(null); // { days, isNew, milestone }
   const [avatarProfiles, setAvatarProfilesState] = useState({});
   const [pendingDeepLink, setPendingDeepLink] = useState(null);
+  const [commentInput, setCommentInput] = useState("");
+  const [commentReactionPicker, setCommentReactionPicker] = useState(null);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [avatarTab, setAvatarTab] = useState("emoji");
   const [avatarDraft, setAvatarDraft] = useState({ type: "letter", value: "", bgColor: "#f97316", textColor: "#ffffff" });
@@ -1222,6 +1224,90 @@ export default function App() {
     await setDoc(ref, { messages: updated });
   };
 
+  const handleAddComment = async (challengeId) => {
+    if (!userName || !commentInput.trim() || !currentGroup) return;
+    const comment = {
+      id: Date.now().toString(),
+      user: userName,
+      text: commentInput.trim(),
+      ts: Date.now(),
+      reactions: {},
+    };
+    const updated = challenges.map(ch => {
+      if (ch.id !== challengeId) return ch;
+      return { ...ch, comments: [...(ch.comments || []), comment] };
+    });
+    await save(updated);
+    setCommentInput("");
+    // Notify accepted members (except commenter)
+    const ch = challenges.find(c => c.id === challengeId);
+    const accepted = (ch?.accepted || []).filter(u => u !== userName);
+    if (accepted.length && currentGroup) {
+      try {
+        await addDoc(collection(db, "reactionNotifs"), {
+          type: "comment",
+          reactor: userName,
+          recipients: accepted,
+          challengeName: ch?.name || "a challenge",
+          challengeEmoji: ch?.emoji || "🏆",
+          challengeId,
+          groupId: currentGroup.id,
+          text: commentInput.trim(),
+          ts: Date.now(),
+          notified: false,
+        });
+      } catch (_) {}
+    }
+  };
+
+  const handleCommentReact = async (challengeId, commentId, emoji) => {
+    if (!userName || !currentGroup) return;
+    const updated = challenges.map(ch => {
+      if (ch.id !== challengeId) return ch;
+      const comments = (ch.comments || []).map(c => {
+        if (c.id !== commentId) return c;
+        const reactions = { ...(c.reactions || {}) };
+        if (!reactions[emoji]) reactions[emoji] = [];
+        if (reactions[emoji].includes(userName)) {
+          reactions[emoji] = reactions[emoji].filter(u => u !== userName);
+          if (!reactions[emoji].length) delete reactions[emoji];
+        } else {
+          reactions[emoji] = [...reactions[emoji], userName];
+        }
+        return { ...c, reactions };
+      });
+      return { ...ch, comments };
+    });
+    await save(updated);
+    setCommentReactionPicker(null);
+    // Notify comment owner
+    const ch = challenges.find(c => c.id === challengeId);
+    const comment = (ch?.comments || []).find(c => c.id === commentId);
+    if (comment && comment.user !== userName) {
+      try {
+        await addDoc(collection(db, "reactionNotifs"), {
+          type: "comment_reaction",
+          reactor: userName,
+          owner: comment.user,
+          emoji,
+          challengeName: ch?.name || "a challenge",
+          challengeEmoji: ch?.emoji || "🏆",
+          groupId: currentGroup.id,
+          ts: Date.now(),
+          notified: false,
+        });
+      } catch (_) {}
+    }
+  };
+
+  const handleDeleteComment = async (challengeId, commentId) => {
+    const updated = challenges.map(ch => {
+      if (ch.id !== challengeId) return ch;
+      return { ...ch, comments: (ch.comments || []).filter(c => c.id !== commentId) };
+    });
+    await save(updated);
+  };
+
   const handleLeaderboardReact = async (challengeId, targetUser, emoji) => {
     // Notify the person being reacted to on the leaderboard
     if (targetUser !== userName) {
@@ -2239,6 +2325,83 @@ export default function App() {
                 </div>
                 );
               })}
+            {/* COMMENTS SECTION */}
+            {(() => {
+              const ch = challenges.find(c => c.id === selectedChallenge?.id) || selectedChallenge;
+              if (!ch) return null;
+              const comments = ch.comments || [];
+              return (
+                <div style={{ marginTop: 24 }}>
+                  <SectionLabel>COMMENTS ({comments.length})</SectionLabel>
+
+                  {/* Comment input */}
+                  {!isExpired(ch) && (
+                    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                      <Avatar name={userName} size={32} avatarProfiles={avatarProfiles} />
+                      <div style={{ flex: 1, position: "relative" }}>
+                        <textarea
+                          value={commentInput}
+                          onChange={e => { setCommentInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px"; }}
+                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(ch.id); }}}
+                          placeholder="Add a comment..."
+                          rows={1}
+                          style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, padding: "10px 44px 10px 14px", color: "#fff", fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit", lineHeight: 1.5, boxSizing: "border-box" }}
+                        />
+                        <button onClick={() => handleAddComment(ch.id)}
+                          style={{ position: "absolute", right: 8, bottom: 8, background: "#f97316", border: "none", borderRadius: "50%", width: 28, height: 28, color: "#fff", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Comments list */}
+                  {comments.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "20px 0", color: "#555", fontSize: 14 }}>No comments yet — be the first!</div>
+                  )}
+                  {[...comments].sort((a, b) => a.ts - b.ts).map(comment => {
+                    const isMe = comment.user === userName;
+                    const mentions = comment.text?.match(/@(\w+)/g);
+                    const isMentioned = mentions?.some(m => m.slice(1) === userName);
+                    return (
+                      <div key={comment.id} style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+                        <Avatar name={comment.user} size={32} avatarProfiles={avatarProfiles} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontWeight: 700, fontSize: 13, color: "#f0f0f0" }}>{comment.user}</span>
+                            <span style={{ fontSize: 11, color: "#555" }}>{new Date(comment.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                            {isMe && (
+                              <button onClick={() => handleDeleteComment(ch.id, comment.id)}
+                                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}>🗑</button>
+                            )}
+                          </div>
+                          <div onClick={() => setCommentReactionPicker(commentReactionPicker === comment.id ? null : comment.id)}
+                            style={{ background: isMentioned ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.05)", border: `1px solid ${isMentioned ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, borderTopLeftRadius: 4, padding: "10px 12px", fontSize: 14, color: "#f0f0f0", lineHeight: 1.5, cursor: "pointer", position: "relative" }}>
+                            {comment.text}
+                            {commentReactionPicker === comment.id && (
+                              <div style={{ position: "absolute", top: "100%", left: 0, background: "#1a1a1f", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12, padding: "6px 8px", display: "flex", gap: 4, zIndex: 50, marginTop: 4 }}>
+                                {["👍","🔥","💪","😂","🥇","👀","❤️","🤯","👏"].map(e => (
+                                  <button key={e} onClick={(ev) => { ev.stopPropagation(); handleCommentReact(ch.id, comment.id, e); }}
+                                    style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "2px 4px", borderRadius: 6 }}>{e}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {comment.reactions && Object.keys(comment.reactions).length > 0 && (
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                              {Object.entries(comment.reactions).map(([emoji, users]) => (
+                                <button key={emoji} onClick={() => handleCommentReact(ch.id, comment.id, emoji)}
+                                  style={{ background: users.includes(userName) ? "rgba(249,115,22,0.2)" : "rgba(255,255,255,0.06)", border: `1px solid ${users.includes(userName) ? "rgba(249,115,22,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 99, padding: "2px 8px", fontSize: 12, cursor: "pointer", color: "#fff", display: "flex", alignItems: "center", gap: 3 }}>
+                                  {emoji} <span style={{ fontSize: 10, color: "#aaa" }}>{users.length}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             </div>
           );
         })()}
