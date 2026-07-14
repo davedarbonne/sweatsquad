@@ -2701,21 +2701,46 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  {notifPermission === "granted" && (
-                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 24 }}>
-                      <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 12 }}>DAILY REMINDER TIME 🔔</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <input
-                          type="time"
-                          value={reminderTime}
-                          onChange={e => handleUpdateReminderTime(e.target.value)}
-                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 15, outline: "none", fontFamily: "inherit", flex: 1 }}
-                        />
-                        <div style={{ fontSize: 12, color: "#888" }}>your local time</div>
+                  <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 18, marginBottom: 24 }}>
+                    <div style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2, marginBottom: 14 }}>NOTIFICATIONS 🔔</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>Push Notifications</div>
+                        <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                          {notifPermission === "granted" ? "Enabled ✅" : notifPermission === "denied" ? "Blocked in browser ❌" : "Not yet enabled"}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>You'll be reminded about active challenges at this time each day</div>
+                      <div onClick={async () => {
+                        if (notifPermission === "granted") {
+                          showToast("To disable, go to your browser settings", "error");
+                        } else if (notifPermission === "denied") {
+                          showToast("Blocked — see instructions below", "error");
+                        } else {
+                          setNotifBannerDismissed(false);
+                          localStorage.removeItem("sweatsquad_notif_dismissed");
+                          await setupNotifications();
+                        }
+                      }} style={{ width: 48, height: 26, borderRadius: 13, background: notifPermission === "granted" ? "#f97316" : "rgba(255,255,255,0.1)", cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: notifPermission === "granted" ? 25 : 3, transition: "left 0.2s" }} />
+                      </div>
                     </div>
-                  )}
+                    {notifPermission === "denied" && (
+                      <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#ccc", lineHeight: 1.6, marginBottom: 8 }}>
+                        To re-enable: <strong>Safari → Settings → Websites → Notifications</strong> → find SweatSquad and set to <strong>Allow</strong>
+                      </div>
+                    )}
+                    {notifPermission === "granted" && (
+                      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14, marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>Daily reminder time</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <input type="time" value={reminderTime} onChange={e => handleUpdateReminderTime(e.target.value)}
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 15, outline: "none", fontFamily: "inherit", flex: 1 }} />
+                          <div style={{ fontSize: 12, color: "#888" }}>local time</div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>You'll be reminded about active challenges at this time each day</div>
+                      </div>
+                    )}
+                  </div>
 
                   <div style={{ marginBottom: 24 }}>
                     <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
