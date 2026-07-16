@@ -2072,6 +2072,11 @@ export default function App() {
                 return b.createdAt - a.createdAt;
               });
               const displayed = sorted.filter(ch => showArchive ? isArchived(ch) : !isArchived(ch));
+              if (displayed.length === 0 && loading) return (
+                <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🏋️</div>
+                </div>
+              );
               if (displayed.length === 0) return (
                 <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>{showArchive ? "📦" : "🏋️"}</div>
