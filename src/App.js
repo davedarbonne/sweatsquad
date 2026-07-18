@@ -173,6 +173,7 @@ export default function App() {
   const [showRecap, setShowRecap] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showArchive, setShowArchive] = useState(false);
+  const [showAllTimePoints, setShowAllTimePoints] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [shareLog, setShareLog] = useState(null); // { challengeName, emoji, amount, unit }
@@ -755,6 +756,67 @@ export default function App() {
     allChallenges.forEach(ch => (ch.logs || []).forEach(l => users.add(l.user)));
     return [...users]
       .map(u => ({ user: u, points: getPoints(u, allChallenges) }))
+      .sort((a, b) => b.points - a.points);
+  };
+
+  const getMonthlyPoints = (user, allChallenges, year, month) => {
+    let points = 0;
+    const isThisMonth = (ts) => {
+      const d = new Date(ts);
+      return d.getFullYear() === year && d.getMonth() === month;
+    };
+    // Challenge completion points — only for completions that happened this month
+    allChallenges.forEach(ch => {
+      const completers = [];
+      const userTotals = {};
+      (ch.logs || []).filter(l => isThisMonth(l.ts)).forEach(l => {
+        userTotals[l.user] = (userTotals[l.user] || 0) + l.amount;
+      });
+      Object.entries(userTotals).forEach(([u, total]) => {
+        if (total >= ch.goal) {
+          const logs = (ch.logs || []).filter(l => l.user === u && isThisMonth(l.ts));
+          let running = 0, completedTs = null;
+          for (const log of logs.sort((a,b) => a.ts - b.ts)) {
+            running += log.amount;
+            if (running >= ch.goal) { completedTs = log.ts; break; }
+          }
+          if (completedTs) completers.push({ user: u, completedTs });
+        }
+      });
+      completers.sort((a, b) => a.completedTs - b.completedTs);
+      const rank = completers.findIndex(c => c.user === user);
+      if (rank === 0) points += 5;
+      else if (rank === 1) points += 4;
+      else if (rank === 2) points += 3;
+      else if (rank > 2) points += 2;
+    });
+    // Streak points this month
+    const allDates = new Set();
+    allChallenges.forEach(ch => {
+      (ch.logs || []).filter(l => l.user === user && isThisMonth(l.ts)).forEach(l => {
+        allDates.add(new Date(l.ts).toISOString().slice(0, 10));
+      });
+    });
+    const sorted = [...allDates].sort();
+    let streak = 1;
+    for (let i = 1; i < sorted.length; i++) {
+      const diff = (new Date(sorted[i]) - new Date(sorted[i-1])) / 86400000;
+      if (diff === 1) {
+        streak++;
+        if (streak === 3) points += 1;
+        else if (streak > 3 && streak % 7 === 0) points += 2;
+      } else { streak = 1; }
+    }
+    // Badge points — earned this month (approximate: count current badges / months active)
+    return points;
+  };
+
+  const getMonthlySquadLeaderboard = (allChallenges, year, month) => {
+    const users = new Set();
+    allChallenges.forEach(ch => (ch.logs || []).forEach(l => users.add(l.user)));
+    return [...users]
+      .map(u => ({ user: u, points: getMonthlyPoints(u, allChallenges, year, month) }))
+      .filter(e => e.points > 0)
       .sort((a, b) => b.points - a.points);
   };
 
@@ -2586,26 +2648,46 @@ export default function App() {
         {/* POINTS / SQUAD LEADERBOARD */}
         {screen === "points" && (
           <div>
-            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, letterSpacing: 2, marginBottom: 4 }}>SQUAD POINTS 🏆</div>
-            <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace", marginBottom: 20 }}>OVERALL RANKINGS</div>
-            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 16, marginBottom: 24 }}>
-              <div style={{ fontSize: 12, color: "#888", marginBottom: 12, lineHeight: 1.6 }}>
-                🥇 1st to finish = <span style={{ color: "#fbbf24", fontWeight: 700 }}>5 pts</span> &nbsp;·&nbsp;
-                🥈 2nd = <span style={{ color: "#94a3b8", fontWeight: 700 }}>4 pts</span> &nbsp;·&nbsp;
-                🥉 3rd = <span style={{ color: "#cd7c32", fontWeight: 700 }}>3 pts</span> &nbsp;·&nbsp;
-                ✅ Finisher = <span style={{ color: "#fff", fontWeight: 700 }}>2 pts</span> &nbsp;·&nbsp;
-                🏅 Each badge = <span style={{ color: "#fff", fontWeight: 700 }}>1 pt</span>
+            {/* Header with toggle */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
+              <div>
+                <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, letterSpacing: 2 }}>SQUAD POINTS 🏆</div>
+                <div style={{ fontSize: 12, color: "#666", fontFamily: "'Space Mono', monospace" }}>
+                  {showAllTimePoints ? "ALL TIME" : new Date().toLocaleString("en-US", { month: "long", year: "numeric" }).toUpperCase()}
+                </div>
+              </div>
+              <button onClick={() => setShowAllTimePoints(p => !p)}
+                style={{ background: showAllTimePoints ? "rgba(249,115,22,0.15)" : "rgba(255,255,255,0.06)", border: `1px solid ${showAllTimePoints ? "rgba(249,115,22,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "6px 12px", color: showAllTimePoints ? "#f97316" : "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 11, fontFamily: "'Space Mono', monospace", marginTop: 4 }}>
+                {showAllTimePoints ? "THIS MONTH" : "ALL TIME"}
+              </button>
+            </div>
+
+            {/* Points key */}
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "12px 14px", marginBottom: 20, marginTop: 16 }}>
+              <div style={{ fontSize: 11, color: "#888", lineHeight: 1.8 }}>
+                🥇 1st = <span style={{ color: "#fbbf24", fontWeight: 700 }}>5</span> &nbsp;·&nbsp;
+                🥈 2nd = <span style={{ color: "#94a3b8", fontWeight: 700 }}>4</span> &nbsp;·&nbsp;
+                🥉 3rd = <span style={{ color: "#cd7c32", fontWeight: 700 }}>3</span> &nbsp;·&nbsp;
+                ✅ Finish = <span style={{ color: "#fff", fontWeight: 700 }}>2</span> &nbsp;·&nbsp;
+                🔥 3-day streak = <span style={{ color: "#fff", fontWeight: 700 }}>1</span> &nbsp;·&nbsp;
+                ⚡ 7-day = <span style={{ color: "#fff", fontWeight: 700 }}>2</span>
               </div>
             </div>
+
             {(() => {
-              const squad = getSquadLeaderboard(challenges);
+              const now = new Date();
+              const squad = showAllTimePoints
+                ? getSquadLeaderboard(challenges)
+                : getMonthlySquadLeaderboard(challenges, now.getFullYear(), now.getMonth());
+
               if (squad.length === 0) return (
                 <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>🏆</div>
-                  <div style={{ fontWeight: 600 }}>No points yet</div>
-                  <div style={{ fontSize: 14, marginTop: 6 }}>Complete challenges to earn points!</div>
+                  <div style={{ fontWeight: 600 }}>No points yet this month</div>
+                  <div style={{ fontSize: 14, marginTop: 6 }}>Complete challenges to get on the board!</div>
                 </div>
               );
+
               return squad.map((entry, i) => {
                 const isMe = entry.user === userName;
                 const badges = getUserBadges(entry.user, challenges);
@@ -2622,8 +2704,8 @@ export default function App() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{entry.user}{isMe ? " (you)" : ""}</div>
                       <div style={{ fontSize: 11, color: "#666", marginTop: 3, display: "flex", gap: 10 }}>
-                        <span>✅ {completedCount} challenge{completedCount !== 1 ? "s" : ""}</span>
-                        <span>🏅 {badges.length} badge{badges.length !== 1 ? "s" : ""}</span>
+                        <span>✅ {completedCount}</span>
+                        <span>🏅 {badges.length}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
