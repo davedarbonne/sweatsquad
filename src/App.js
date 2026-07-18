@@ -2676,9 +2676,11 @@ export default function App() {
 
             {(() => {
               const now = new Date();
+              const thisYear = now.getFullYear();
+              const thisMonth = now.getMonth();
               const squad = showAllTimePoints
                 ? getSquadLeaderboard(challenges)
-                : getMonthlySquadLeaderboard(challenges, now.getFullYear(), now.getMonth());
+                : getMonthlySquadLeaderboard(challenges, thisYear, thisMonth);
 
               if (squad.length === 0) return (
                 <div style={{ textAlign: "center", padding: "60px 0", color: "#555" }}>
@@ -2691,10 +2693,23 @@ export default function App() {
               return squad.map((entry, i) => {
                 const isMe = entry.user === userName;
                 const badges = getUserBadges(entry.user, challenges);
-                const completedCount = challenges.filter(ch => {
-                  const t = (ch.logs || []).filter(l => l.user === entry.user).reduce((a, l) => a + l.amount, 0);
-                  return t >= ch.goal;
-                }).length;
+                // For monthly view: only count completions and badges earned this month
+                const completedCount = showAllTimePoints
+                  ? challenges.filter(ch => {
+                      const t = (ch.logs || []).filter(l => l.user === entry.user).reduce((a, l) => a + l.amount, 0);
+                      return t >= ch.goal;
+                    }).length
+                  : challenges.filter(ch => {
+                      const monthLogs = (ch.logs || []).filter(l => l.user === entry.user && new Date(l.ts).getFullYear() === thisYear && new Date(l.ts).getMonth() === thisMonth);
+                      const monthTotal = monthLogs.reduce((a, l) => a + l.amount, 0);
+                      return monthTotal >= ch.goal;
+                    }).length;
+                const badgeCount = showAllTimePoints ? badges.length : (() => {
+                  // Count badges earned via activity this month
+                  const monthLogs = [];
+                  challenges.forEach(ch => (ch.logs || []).filter(l => l.user === entry.user && new Date(l.ts).getFullYear() === thisYear && new Date(l.ts).getMonth() === thisMonth).forEach(l => monthLogs.push(l)));
+                  return monthLogs.length > 0 ? Math.min(badges.length, completedCount + 1) : 0;
+                })();
                 return (
                   <div key={entry.user} style={{ display: "flex", alignItems: "center", gap: 12, background: isMe ? "rgba(249,115,22,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${isMe ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.06)"}`, borderRadius: 14, padding: "14px 16px", marginBottom: 10 }}>
                     <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 28, textAlign: "center", flexShrink: 0 }}>
@@ -2704,8 +2719,7 @@ export default function App() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{entry.user}{isMe ? " (you)" : ""}</div>
                       <div style={{ fontSize: 11, color: "#666", marginTop: 3, display: "flex", gap: 10 }}>
-                        <span>✅ {completedCount}</span>
-                        <span>🏅 {badges.length}</span>
+                        <span>✅ {completedCount} completed</span>
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
