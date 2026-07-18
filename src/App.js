@@ -2720,6 +2720,7 @@ export default function App() {
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{entry.user}{isMe ? " (you)" : ""}</div>
                       <div style={{ fontSize: 11, color: "#666", marginTop: 3, display: "flex", gap: 10 }}>
                         <span>✅ {completedCount} completed</span>
+                        <span>🏅 {badges.length} badge{badges.length !== 1 ? "s" : ""}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
