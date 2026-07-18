@@ -2704,12 +2704,29 @@ export default function App() {
                       const monthTotal = monthLogs.reduce((a, l) => a + l.amount, 0);
                       return monthTotal >= ch.goal;
                     }).length;
-                const badgeCount = showAllTimePoints ? badges.length : (() => {
-                  // Count badges earned via activity this month
-                  const monthLogs = [];
-                  challenges.forEach(ch => (ch.logs || []).filter(l => l.user === entry.user && new Date(l.ts).getFullYear() === thisYear && new Date(l.ts).getMonth() === thisMonth).forEach(l => monthLogs.push(l)));
-                  return monthLogs.length > 0 ? Math.min(badges.length, completedCount + 1) : 0;
-                })();
+
+                // Count 1st place finishes
+                const firstPlaceCount = challenges.filter(ch => {
+                  const completers = [];
+                  const userTotals = {};
+                  const logsToCheck = showAllTimePoints
+                    ? (ch.logs || [])
+                    : (ch.logs || []).filter(l => new Date(l.ts).getFullYear() === thisYear && new Date(l.ts).getMonth() === thisMonth);
+                  logsToCheck.forEach(l => { userTotals[l.user] = (userTotals[l.user] || 0) + l.amount; });
+                  Object.entries(userTotals).forEach(([u, total]) => {
+                    if (total >= ch.goal) {
+                      const logs = logsToCheck.filter(l => l.user === u);
+                      let running = 0, completedTs = null;
+                      for (const log of logs.sort((a,b) => a.ts - b.ts)) {
+                        running += log.amount;
+                        if (running >= ch.goal) { completedTs = log.ts; break; }
+                      }
+                      if (completedTs) completers.push({ user: u, completedTs });
+                    }
+                  });
+                  completers.sort((a, b) => a.completedTs - b.completedTs);
+                  return completers[0]?.user === entry.user;
+                }).length;
                 return (
                   <div key={entry.user} style={{ display: "flex", alignItems: "center", gap: 12, background: isMe ? "rgba(249,115,22,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${isMe ? "rgba(249,115,22,0.3)" : "rgba(255,255,255,0.06)"}`, borderRadius: 14, padding: "14px 16px", marginBottom: 10 }}>
                     <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : i === 2 ? "#cd7c32" : "#555", width: 28, textAlign: "center", flexShrink: 0 }}>
@@ -2720,7 +2737,7 @@ export default function App() {
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{entry.user}{isMe ? " (you)" : ""}</div>
                       <div style={{ fontSize: 11, color: "#666", marginTop: 3, display: "flex", gap: 10 }}>
                         <span>✅ {completedCount} completed</span>
-                        <span>🏅 {badges.length} badge{badges.length !== 1 ? "s" : ""}</span>
+                        <span>🥇 {firstPlaceCount} first{firstPlaceCount !== 1 ? "s" : ""}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
