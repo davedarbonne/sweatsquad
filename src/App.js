@@ -2410,7 +2410,7 @@ export default function App() {
                   {comments.length === 0 && (
                     <div style={{ textAlign: "center", padding: "20px 0", color: "#555", fontSize: 14 }}>No comments yet — be the first!</div>
                   )}
-                  {[...comments].sort((a, b) => a.ts - b.ts).map(comment => {
+                  {[...comments].sort((a, b) => b.ts - a.ts).map(comment => {
                     const isMe = comment.user === userName;
                     const mentions = comment.text?.match(/@(\w+)/g);
                     const isMentioned = mentions?.some(m => m.slice(1) === userName);
