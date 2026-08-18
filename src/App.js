@@ -388,10 +388,10 @@ export default function App() {
               running += log.amount;
               if (running >= ch.goal) { completedTs = log.ts; break; }
             }
-            if (completedTs) completers.push({ user: u, completedTs });
+            if (completedTs) completers.push({ user: u, completedTs, total });
           }
         });
-        completers.sort((a, b) => a.completedTs - b.completedTs);
+        completers.sort((a, b) => b.total !== a.total ? b.total - a.total : a.completedTs - b.completedTs);
         const rank = completers.findIndex(c => c.user === user);
         if (rank === 0) monthPoints += 5;
         else if (rank === 1) monthPoints += 4;
@@ -735,10 +735,10 @@ export default function App() {
             running += log.amount;
             if (running >= ch.goal) { completedTs = log.ts; break; }
           }
-          completers.push({ user: u, completedTs });
+          completers.push({ user: u, completedTs, total });
         }
       });
-      completers.sort((a, b) => a.completedTs - b.completedTs);
+      completers.sort((a, b) => b.total !== a.total ? b.total - a.total : a.completedTs - b.completedTs);
       const rank = completers.findIndex(c => c.user === user);
       if (rank === 0) points += 5;
       else if (rank === 1) points += 4;
@@ -780,10 +780,10 @@ export default function App() {
             running += log.amount;
             if (running >= ch.goal) { completedTs = log.ts; break; }
           }
-          if (completedTs) completers.push({ user: u, completedTs });
+          if (completedTs) completers.push({ user: u, completedTs, total });
         }
       });
-      completers.sort((a, b) => a.completedTs - b.completedTs);
+      completers.sort((a, b) => b.total !== a.total ? b.total - a.total : a.completedTs - b.completedTs);
       const rank = completers.findIndex(c => c.user === user);
       if (rank === 0) points += 5;
       else if (rank === 1) points += 4;
@@ -2721,10 +2721,10 @@ export default function App() {
                         running += log.amount;
                         if (running >= ch.goal) { completedTs = log.ts; break; }
                       }
-                      if (completedTs) completers.push({ user: u, completedTs });
+                      if (completedTs) completers.push({ user: u, completedTs, total });
                     }
                   });
-                  completers.sort((a, b) => a.completedTs - b.completedTs);
+                  completers.sort((a, b) => b.total !== a.total ? b.total - a.total : a.completedTs - b.completedTs);
                   return completers[0]?.user === entry.user;
                 }).length;
                 return (
