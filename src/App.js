@@ -1684,16 +1684,6 @@ export default function App() {
           </div>
         </div>
       )}
-                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(ch.id); }}}
-                          placeholder="Add a comment..."
-                          rows={1}
-                          style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, padding: "10px 44px 10px 14px", color: "#fff", fontSize: 14, outline: "none", resize: "none", fontFamily: "inherit", lineHeight: 1.5, boxSizing: "border-box" }}
-                        />
-                        <button onClick={() => handleAddComment(ch.id)}
-                          style={{ position: "absolute", right: 8, bottom: 8, background: "#f97316", border: "none", borderRadius: "50%", width: 28, height: 28, color: "#fff", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Comments list */}
                   {comments.length === 0 && (
