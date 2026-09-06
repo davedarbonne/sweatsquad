@@ -176,7 +176,6 @@ export default function App() {
   const [showAllTimePoints, setShowAllTimePoints] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
-  const [shareLog, setShareLog] = useState(null); // { challengeName, emoji, amount, unit }
   const [unreadCount, setUnreadCount] = useState(0);
   const [lastReadTs, setLastReadTs] = useState(() => parseInt(localStorage.getItem("sweatsquad_lastread") || "0"));
 
@@ -903,7 +902,6 @@ export default function App() {
 
     setLogAmount("");
     showToast(`+${amt} ${selectedChallenge.unit} logged! 💪`);
-    setShareLog({ challengeName: selectedChallenge.name, emoji: selectedChallenge.emoji, amount: amt, unit: selectedChallenge.unit });
 
     // Calculate streak after log
     const tzOffset = new Date().getTimezoneOffset() * -60000;
@@ -949,22 +947,21 @@ export default function App() {
     await save([...challenges, ch]);
   };
 
-  const handleSendMessage = async (logShare = null) => {
+  const handleSendMessage = async () => {
     if (!userName || !currentGroup) { showToast("Set your name first!", "error"); return; }
-    const text = logShare ? null : chatInput.trim();
-    if (!logShare && !text) return;
+    const text = chatInput.trim();
+    if (!text) return;
     const msg = {
       id: Date.now().toString(),
       user: userName,
       ts: Date.now(),
-      text: logShare ? null : text,
-      logShare: logShare || null,
+      text,
+      logShare: null,
     };
     const ref = doc(db, "groups", currentGroup.id, "data", "chat");
     const updated = [...messages, msg];
     await setDoc(ref, { messages: updated });
     setChatInput("");
-    setShareLog(null);
   };
 
   const dismissMentionAlert = () => {
@@ -1719,18 +1716,6 @@ export default function App() {
             <button onClick={dismissMentionAlert}
               style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>×</button>
           </div>
-        </div>
-      )}
-
-      {shareLog && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.4)", borderRadius: 16, padding: "14px 18px", zIndex: 997, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.5)", minWidth: 280 }}>
-          <div style={{ fontSize: 22 }}>{shareLog.emoji}</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Share to chat?</div>
-            <div style={{ fontSize: 12, color: "#888" }}>+{shareLog.amount} {shareLog.unit} — {shareLog.challengeName}</div>
-          </div>
-          <button onClick={() => handleSendMessage(shareLog)} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "6px 12px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Share</button>
-          <button onClick={() => setShareLog(null)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
         </div>
       )}
 
