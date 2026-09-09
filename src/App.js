@@ -1459,7 +1459,7 @@ export default function App() {
     return (
       <div style={{ minHeight: "100vh", background: "#0d0d0f", fontFamily: "'DM Sans', sans-serif", color: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-        <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, maxWidth: "100vw", height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none" }} />
         <div style={{ width: "100%", maxWidth: 380, position: "relative", zIndex: 1 }}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
             <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 42, letterSpacing: 3, lineHeight: 1 }}>
@@ -1640,7 +1640,7 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: "#0d0d0f", fontFamily: "'DM Sans', sans-serif", color: "#f0f0f0", position: "relative" }}>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
-      <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
+      <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, maxWidth: "100vw", height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
 
       {newBadges.length > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
