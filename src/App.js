@@ -1142,6 +1142,16 @@ export default function App() {
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   };
 
+  const formatChatTs = (ts) => {
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (isToday) return time;
+    const datePart = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${datePart}, ${time}`;
+  };
+
   const getEndTs = (ch) => {
     if (!ch.durationDays) return null;
     return ch.createdAt + ch.durationDays * 86400000;
@@ -2627,7 +2637,7 @@ export default function App() {
                           </div>
                         )}
                         <div style={{ fontSize: 10, color: "#444", marginTop: 2, marginLeft: 4, marginRight: 4 }}>
-                          {new Date(msg.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          {formatChatTs(msg.ts)}
                         </div>
                       </div>
                     );
