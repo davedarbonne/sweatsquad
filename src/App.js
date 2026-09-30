@@ -697,6 +697,15 @@ export default function App() {
     return BADGE_DEFS.filter(b => earned.has(b.id));
   };
 
+  const hasChallengeEnded = (ch) => {
+    if (ch.durationDays) {
+      return Date.now() > ch.createdAt + ch.durationDays * 86400000;
+    }
+    // No duration: it "ends" once everyone participating has hit the goal
+    const lb = buildLeaderboard(ch);
+    return lb.length > 0 && lb.every(e => e.total >= ch.goal);
+  };
+
   const getPoints = (user, allChallenges) => {
     let points = 0;
     // Streak bonus points
@@ -719,8 +728,9 @@ export default function App() {
         streak = 1;
       }
     }
-    // Challenge completion points: 1st=5, 2nd=4, 3rd=3, rest=2
+    // Challenge completion points: 1st=5, 2nd=4, 3rd=3, rest=2 — only once the challenge has ended
     allChallenges.forEach(ch => {
+      if (!hasChallengeEnded(ch)) return;
       const completers = [];
       const userTotals = {};
       (ch.logs || []).forEach(l => { userTotals[l.user] = (userTotals[l.user] || 0) + l.amount; });
@@ -781,8 +791,9 @@ export default function App() {
       const d = new Date(ts);
       return d.getFullYear() === year && d.getMonth() === month;
     };
-    // Challenge completion points — only for completions that happened this month
+    // Challenge completion points — only for completions that happened this month, and only once the challenge has ended
     allChallenges.forEach(ch => {
+      if (!hasChallengeEnded(ch)) return;
       const completers = [];
       const userTotals = {};
       (ch.logs || []).filter(l => isThisMonth(l.ts)).forEach(l => {
