@@ -127,6 +127,7 @@ export default function App() {
   const [currentGroup, setCurrentGroup] = useState(null); // { id, name, type, code, admins, members }
   const [userGroups, setUserGroups] = useState([]);
   const [allOpenGroups, setAllOpenGroups] = useState([]);
+  const [pendingGroups, setPendingGroups] = useState([]); // closed groups this user has requested to join
   const [groupSwitcherOpen, setGroupSwitcherOpen] = useState(false);
   const [groupCreateModal, setGroupCreateModal] = useState(null); // "create" | "join" | "browse" | null
   const [newGroupName, setNewGroupName] = useState("");
@@ -270,6 +271,7 @@ export default function App() {
       const open = all.filter(g => g.type === "open" && !(g.members || []).includes(userName));
       setUserGroups(mine);
       setAllOpenGroups(open);
+      setPendingGroups(all.filter(g => (g.pendingMembers || []).includes(userName) && !(g.members || []).includes(userName)));
       // Auto-select last used group
       const lastGroupId = localStorage.getItem(`sweatsquad_group_${userName}`);
       const lastGroup = mine.find(g => g.id === lastGroupId) || mine[0];
@@ -1056,6 +1058,7 @@ export default function App() {
       } catch (_) {}
       showToast("Request sent! Wait for admin approval 🙏");
     }
+    setGroupScreen("setup");
     setJoinCodeInput("");
     setGroupCreateModal(null);
     setGroupSwitcherOpen(false);
@@ -1572,6 +1575,15 @@ export default function App() {
 
           {groupScreen === "setup" && (
             <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 24 }}>
+              {pendingGroups.length > 0 && (
+                <div style={{ background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.4)", borderRadius: 14, padding: 16, marginBottom: 20, textAlign: "center" }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>⏳</div>
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Waiting for admin approval</div>
+                  <div style={{ fontSize: 13, color: "#aaa", lineHeight: 1.5 }}>
+                    Your request to join <span style={{ color: "#f97316", fontWeight: 700 }}>{pendingGroups.map(g => g.name).join(", ")}</span> has been sent. You'll get in automatically as soon as an admin approves it — you can close the app and come back later.
+                  </div>
+                </div>
+              )}
               <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, textAlign: "center" }}>Join or Create a Squad</div>
               <div style={{ fontSize: 14, color: "#888", textAlign: "center", marginBottom: 24 }}>Get started by creating your own group or joining an existing one</div>
               <button onClick={() => setGroupScreen("create")} style={{ width: "100%", background: "linear-gradient(135deg, #f97316, #ea580c)", border: "none", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "'Bebas Neue', cursive", letterSpacing: 2, marginBottom: 12 }}>
