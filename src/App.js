@@ -106,7 +106,7 @@ function ProgressBar({ pct, color = "#f97316" }) {
       <div style={{
         width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 99,
         background: `linear-gradient(90deg, ${color}, #fbbf24)`,
-        boxShadow: pct >= 100 ? `0 0 18px ${color}, 0 0 6px #fbbf24` : `0 0 12px ${color}99`,
+        boxShadow: pct >= 100 ? `0 0 10px ${color}88` : "none",
         transition: "width 0.6s cubic-bezier(.4,0,.2,1)"
       }} />
     </div>
@@ -2131,7 +2131,7 @@ export default function App() {
               const tzOffset = new Date().getTimezoneOffset() * -60000;
               const streak = getCurrentStreak(userName, challenges, tzOffset);
               return streak > 0 ? (
-                <div style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.45)", borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4, boxShadow: "0 0 18px rgba(249,115,22,0.3)" }}>
+                <div style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.45)", borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ fontSize: 16 }}>🔥</span>
                   <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: "#f97316", letterSpacing: 1 }}>{streak}</span>
                 </div>
@@ -2173,7 +2173,7 @@ export default function App() {
                         const c = BADGE_GLOW_COLORS[i % BADGE_GLOW_COLORS.length];
                         return (
                           <button key={b.id} aria-label={b.label} onClick={() => setBadgeModal({ badge: b, earned: true })}
-                            style={{ flex: "none", width: 36, height: 36, padding: 0, borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, lineHeight: 1, background: `radial-gradient(circle at 30% 25%, ${c}55, #17171b 70%)`, border: `1.5px solid ${c}99`, boxShadow: `0 0 16px ${c}55, inset 0 0 10px ${c}33` }}>
+                            style={{ flex: "none", width: 36, height: 36, padding: 0, borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, lineHeight: 1, background: `radial-gradient(circle at 30% 25%, ${c}33, #17171b 70%)`, border: `1.5px solid ${c}66` }}>
                             {b.emoji}
                           </button>
                         );
@@ -2221,7 +2221,7 @@ export default function App() {
                 const pct = Math.min(100, (myTotal / ch.goal) * 100);
                 const newChallenge = isNew(ch);
                 return (
-                  <div key={ch.id} style={{ background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 22, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 24px rgba(74,222,128,0.1)" : "0 4px 18px rgba(0,0,0,0.25)" }}>
+                  <div key={ch.id} style={{ background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 22, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: "0 4px 18px rgba(0,0,0,0.25)" }}>
                     {newChallenge && (
                       <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
                     )}
@@ -2237,7 +2237,7 @@ export default function App() {
                     )}
                     <div onClick={() => { setSelectedChallenge(ch); setScreen("challenge"); }} style={{ cursor: "pointer" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
-                        <div style={{ flex: "none", width: 48, height: 48, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, lineHeight: 1, background: "radial-gradient(circle at 30% 25%, rgba(249,115,22,0.45), #17171b 75%)", border: "1.5px solid rgba(249,115,22,0.55)", boxShadow: "0 0 16px rgba(249,115,22,0.35), inset 0 0 10px rgba(249,115,22,0.2)" }}>{ch.emoji}</div>
+                        <div style={{ flex: "none", width: 48, height: 48, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, lineHeight: 1, background: "radial-gradient(circle at 30% 25%, rgba(249,115,22,0.28), #17171b 75%)", border: "1.5px solid rgba(249,115,22,0.4)" }}>{ch.emoji}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: 16 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
@@ -2976,21 +2976,21 @@ export default function App() {
             return (
               <div key={item.s} style={{ width: 64, display: "flex", justifyContent: "center" }}>
                 <button onClick={onNav} aria-label="Create challenge"
-                  style={{ marginTop: -28, width: 58, height: 58, borderRadius: "50%", border: "none", cursor: "pointer", color: "#fff", fontSize: 30, fontWeight: 300, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 8px 24px rgba(249,115,22,0.55), 0 0 0 6px #0d0d0f" }}>+</button>
+                  style={{ marginTop: -28, width: 58, height: 58, borderRadius: "50%", border: "none", cursor: "pointer", color: "#fff", fontSize: 30, fontWeight: 300, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 4px 12px rgba(0,0,0,0.45), 0 0 0 6px #0d0d0f" }}>+</button>
               </div>
             );
           }
           return (
             <button key={item.s} onClick={onNav}
               style={{ background: "none", border: "none", color: active ? "#f97316" : "#8a8a93", cursor: "pointer", padding: "4px 0", width: 64, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
-              <span style={{ fontSize: 20, position: "relative", filter: active ? "drop-shadow(0 0 6px rgba(249,115,22,0.6))" : "none" }}>
+              <span style={{ fontSize: 20, position: "relative" }}>
                 {item.icon}
                 {item.s === "chat" && unreadCount > 0 && (
                   <span style={{ position: "absolute", top: -4, right: -6, background: "#ef4444", borderRadius: "50%", width: 14, height: 14, fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900 }}>{unreadCount}</span>
                 )}
               </span>
               {item.label}
-              <span style={{ width: 18, height: 3, borderRadius: 2, background: active ? "#f97316" : "transparent", boxShadow: active ? "0 0 8px #f97316" : "none" }} />
+              <span style={{ width: 18, height: 3, borderRadius: 2, background: active ? "#f97316" : "transparent" }} />
             </button>
           );
         })}
