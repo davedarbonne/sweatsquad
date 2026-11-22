@@ -1466,8 +1466,8 @@ export default function App() {
 
   const navItems = [
     { label: "Challenges", icon: "🏋️", s: "home" },
-    { label: "Create", icon: "➕", s: "create" },
     { label: "Chat", icon: "💬", s: "chat" },
+    { label: "Create", icon: "➕", s: "create" },
     { label: "Points", icon: "🏆", s: "points" },
     { label: "My Stats", icon: "📊", s: "profile" },
   ];
