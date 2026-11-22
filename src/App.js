@@ -98,6 +98,20 @@ function BadgeChip({ badge, earned = true, onTap }) {
   );
 }
 
+const ANIM_CSS = `
+@keyframes ssFadeUp { from { opacity: 0; transform: translateY(14px); } }
+@keyframes ssFade { from { opacity: 0; } }
+.ss-card-in { animation: ssFadeUp 0.45s ease backwards; }
+.ss-screen-in { animation: ssFade 0.3s ease backwards; }
+.ss-press { transition: transform 0.12s ease; }
+.ss-press:active { transform: scale(0.96); }
+@media (prefers-reduced-motion: reduce) {
+  .ss-card-in, .ss-screen-in { animation: none; }
+  .ss-press { transition: none; }
+  .ss-press:active { transform: none; }
+}
+`;
+
 const BADGE_GLOW_COLORS = ["#f97316", "#facc15", "#fbbf24", "#f59e0b", "#f43f5e", "#fb923c", "#a78bfa", "#34d399", "#60a5fa", "#f472b6"];
 
 const NAV_ICON_PATHS = {
@@ -113,13 +127,18 @@ const NavIcon = ({ name }) => (
 );
 
 function ProgressBar({ pct, color = "#f97316" }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setShown(pct), 80);
+    return () => clearTimeout(t);
+  }, [pct]);
   return (
-    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 4, height: 12, overflow: "hidden", width: "100%" }}>
+    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 99, height: 12, overflow: "hidden", width: "100%" }}>
       <div style={{
-        width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 4,
+        width: `${Math.min(shown, 100)}%`, height: "100%", borderRadius: 99,
         background: `linear-gradient(90deg, ${color}, #fbbf24)`,
         boxShadow: pct >= 100 ? `0 0 10px ${color}88` : "none",
-        transition: "width 0.6s cubic-bezier(.4,0,.2,1)"
+        transition: "width 0.9s cubic-bezier(.22,1,.36,1)"
       }} />
     </div>
   );
@@ -1679,6 +1698,7 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: "#0d0d0f", fontFamily: "'DM Sans', sans-serif", color: "#f0f0f0", position: "relative" }}>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
+      <style>{ANIM_CSS}</style>
       <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, maxWidth: "100vw", height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
 
       {newBadges.length > 0 && (
@@ -2161,6 +2181,7 @@ export default function App() {
           </button>
         )}
 
+        <div key={screen} className="ss-screen-in">
         {/* HOME */}
         {screen === "home" && (
           <div>
@@ -2184,7 +2205,7 @@ export default function App() {
                       {badges.map((b, i) => {
                         const c = BADGE_GLOW_COLORS[i % BADGE_GLOW_COLORS.length];
                         return (
-                          <button key={b.id} aria-label={b.label} onClick={() => setBadgeModal({ badge: b, earned: true })}
+                          <button key={b.id} className="ss-press" aria-label={b.label} onClick={() => setBadgeModal({ badge: b, earned: true })}
                             style={{ flex: "none", width: 36, height: 36, padding: 0, borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, lineHeight: 1, background: `radial-gradient(circle at 30% 25%, ${c}33, #17171b 70%)`, border: `1.5px solid ${c}66` }}>
                             {b.emoji}
                           </button>
@@ -2199,11 +2220,11 @@ export default function App() {
               <SectionLabel>{showArchive ? "ARCHIVED CHALLENGES" : "ACTIVE CHALLENGES"}</SectionLabel>
               <div style={{ display: "flex", gap: 8 }}>
                 {challenges.some(ch => isArchived(ch)) && (
-                  <button onClick={() => setShowArchive(a => !a)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "8px 12px", color: showArchive ? "#f97316" : "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                  <button className="ss-press" onClick={() => setShowArchive(a => !a)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "8px 12px", color: showArchive ? "#f97316" : "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
                     {showArchive ? "← Active" : "Archive 📦"}
                   </button>
                 )}
-                {!showArchive && <button onClick={() => setScreen("create")} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ New</button>}
+                {!showArchive && <button className="ss-press" onClick={() => setScreen("create")} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ New</button>}
               </div>
             </div>
             {(() => {
@@ -2226,14 +2247,14 @@ export default function App() {
                   <div style={{ fontSize: 14 }}>{showArchive ? "Finished challenges will appear here" : "Create the first one for your squad!"}</div>
                 </div>
               );
-              return displayed.map(ch => {
+              return displayed.map((ch, idx) => {
                 const lb = buildLeaderboard(ch);
                 const myEntry = lb.find(e => e.user === userName);
                 const myTotal = myEntry?.total || 0;
                 const pct = Math.min(100, (myTotal / ch.goal) * 100);
                 const newChallenge = isNew(ch);
                 return (
-                  <div key={ch.id} style={{ background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 14px rgba(74,222,128,0.12)" : "0 4px 18px rgba(0,0,0,0.25)" }}>
+                  <div key={ch.id} className="ss-card-in ss-press" style={{ animationDelay: `${Math.min(idx, 8) * 70}ms`, background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 14px rgba(74,222,128,0.12)" : "0 4px 18px rgba(0,0,0,0.25)" }}>
                     {newChallenge && (
                       <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
                     )}
@@ -2977,6 +2998,7 @@ export default function App() {
             })()}
           </div>
         )}
+        </div>
       </div>
 
       {/* Bottom nav */}
@@ -2987,14 +3009,14 @@ export default function App() {
           if (item.s === "create") {
             return (
               <div key={item.s} style={{ width: 64, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                <button onClick={onNav} aria-label="Create challenge"
+                <button className="ss-press" onClick={onNav} aria-label="Create challenge"
                   style={{ marginTop: -20, width: 58, height: 58, borderRadius: 16, border: "none", cursor: "pointer", color: "#fff", fontSize: 34, fontWeight: 400, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 4px 10px rgba(0,0,0,0.4)" }}>+</button>
                 <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, color: active ? "#f97316" : "#8a8a93" }}>Create</span>
               </div>
             );
           }
           return (
-            <button key={item.s} onClick={onNav}
+            <button key={item.s} className="ss-press" onClick={onNav}
               style={{ background: "none", border: "none", color: active ? "#f97316" : "#8a8a93", cursor: "pointer", padding: "4px 0", width: 64, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
               <span style={{ display: "flex", height: 24, position: "relative" }}>
                 <NavIcon name={item.s} />
