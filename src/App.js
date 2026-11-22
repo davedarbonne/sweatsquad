@@ -100,11 +100,23 @@ function BadgeChip({ badge, earned = true, onTap }) {
 
 const BADGE_GLOW_COLORS = ["#f97316", "#facc15", "#fbbf24", "#f59e0b", "#f43f5e", "#fb923c", "#a78bfa", "#34d399", "#60a5fa", "#f472b6"];
 
+const NAV_ICON_PATHS = {
+  home: "M3 9v6M6.5 6v12M17.5 6v12M21 9v6M6.5 12h11",
+  chat: "M4 5h16v11H9l-5 4z",
+  points: "M7 4h10v5a5 5 0 0 1-10 0zM12 14v5M8 20h8",
+  profile: "M6 20V11M12 20V5M18 20v-6",
+};
+const NavIcon = ({ name }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={NAV_ICON_PATHS[name]} />
+  </svg>
+);
+
 function ProgressBar({ pct, color = "#f97316" }) {
   return (
-    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 99, height: 12, overflow: "hidden", width: "100%" }}>
+    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 4, height: 12, overflow: "hidden", width: "100%" }}>
       <div style={{
-        width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 99,
+        width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 4,
         background: `linear-gradient(90deg, ${color}, #fbbf24)`,
         boxShadow: pct >= 100 ? `0 0 10px ${color}88` : "none",
         transition: "width 0.6s cubic-bezier(.4,0,.2,1)"
@@ -2131,7 +2143,7 @@ export default function App() {
               const tzOffset = new Date().getTimezoneOffset() * -60000;
               const streak = getCurrentStreak(userName, challenges, tzOffset);
               return streak > 0 ? (
-                <div style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.45)", borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.45)", borderRadius: 10, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ fontSize: 16 }}>🔥</span>
                   <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: "#f97316", letterSpacing: 1 }}>{streak}</span>
                 </div>
@@ -2187,11 +2199,11 @@ export default function App() {
               <SectionLabel>{showArchive ? "ARCHIVED CHALLENGES" : "ACTIVE CHALLENGES"}</SectionLabel>
               <div style={{ display: "flex", gap: 8 }}>
                 {challenges.some(ch => isArchived(ch)) && (
-                  <button onClick={() => setShowArchive(a => !a)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "8px 12px", color: showArchive ? "#f97316" : "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                  <button onClick={() => setShowArchive(a => !a)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "8px 12px", color: showArchive ? "#f97316" : "#aaa", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
                     {showArchive ? "← Active" : "Archive 📦"}
                   </button>
                 )}
-                {!showArchive && <button onClick={() => setScreen("create")} style={{ background: "#f97316", border: "none", borderRadius: 10, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ New</button>}
+                {!showArchive && <button onClick={() => setScreen("create")} style={{ background: "#f97316", border: "none", borderRadius: 8, padding: "8px 16px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ New</button>}
               </div>
             </div>
             {(() => {
@@ -2221,7 +2233,7 @@ export default function App() {
                 const pct = Math.min(100, (myTotal / ch.goal) * 100);
                 const newChallenge = isNew(ch);
                 return (
-                  <div key={ch.id} style={{ background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 22, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: "0 4px 18px rgba(0,0,0,0.25)" }}>
+                  <div key={ch.id} style={{ background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 14px rgba(74,222,128,0.12)" : "0 4px 18px rgba(0,0,0,0.25)" }}>
                     {newChallenge && (
                       <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
                     )}
@@ -2237,9 +2249,9 @@ export default function App() {
                     )}
                     <div onClick={() => { setSelectedChallenge(ch); setScreen("challenge"); }} style={{ cursor: "pointer" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
-                        <div style={{ flex: "none", width: 48, height: 48, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, lineHeight: 1, background: "radial-gradient(circle at 30% 25%, rgba(249,115,22,0.28), #17171b 75%)", border: "1.5px solid rgba(249,115,22,0.4)" }}>{ch.emoji}</div>
+                        <div style={{ flex: "none", width: 48, height: 48, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, lineHeight: 1, background: "radial-gradient(circle at 30% 25%, rgba(249,115,22,0.28), #17171b 75%)", border: "1.5px solid rgba(249,115,22,0.4)" }}>{ch.emoji}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 16 }}>{ch.name}</div>
+                          <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 1.5, lineHeight: 1.05, textTransform: "uppercase" }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
                           {ch.dailyGoal && (() => {
                             const todayTotal = getDailyTotal(ch, userName, new Date().toISOString().slice(0, 10));
@@ -2252,7 +2264,7 @@ export default function App() {
                             </div>
                           )}
                         </div>
-                        <div style={{ flex: "none", padding: "5px 10px", borderRadius: 99, background: "rgba(249,115,22,0.16)", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
+                        <div style={{ flex: "none", padding: "5px 10px", borderRadius: 6, background: "rgba(249,115,22,0.16)", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
                       </div>
                       <ProgressBar pct={pct} />
                       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 12, color: "#666" }}>
@@ -2974,17 +2986,18 @@ export default function App() {
           const onNav = () => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") { markChatRead(); dismissMentionAlert(); } };
           if (item.s === "create") {
             return (
-              <div key={item.s} style={{ width: 64, display: "flex", justifyContent: "center" }}>
+              <div key={item.s} style={{ width: 64, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
                 <button onClick={onNav} aria-label="Create challenge"
-                  style={{ marginTop: -28, width: 58, height: 58, borderRadius: "50%", border: "none", cursor: "pointer", color: "#fff", fontSize: 30, fontWeight: 300, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 4px 12px rgba(0,0,0,0.45), 0 0 0 6px #0d0d0f" }}>+</button>
+                  style={{ marginTop: -20, width: 58, height: 58, borderRadius: 16, border: "none", cursor: "pointer", color: "#fff", fontSize: 34, fontWeight: 400, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 4px 10px rgba(0,0,0,0.4)" }}>+</button>
+                <span style={{ fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, color: active ? "#f97316" : "#8a8a93" }}>Create</span>
               </div>
             );
           }
           return (
             <button key={item.s} onClick={onNav}
               style={{ background: "none", border: "none", color: active ? "#f97316" : "#8a8a93", cursor: "pointer", padding: "4px 0", width: 64, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
-              <span style={{ fontSize: 20, position: "relative" }}>
-                {item.icon}
+              <span style={{ display: "flex", height: 24, position: "relative" }}>
+                <NavIcon name={item.s} />
                 {item.s === "chat" && unreadCount > 0 && (
                   <span style={{ position: "absolute", top: -4, right: -6, background: "#ef4444", borderRadius: "50%", width: 14, height: 14, fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900 }}>{unreadCount}</span>
                 )}
