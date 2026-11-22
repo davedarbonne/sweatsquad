@@ -98,12 +98,15 @@ function BadgeChip({ badge, earned = true, onTap }) {
   );
 }
 
+const BADGE_GLOW_COLORS = ["#f97316", "#facc15", "#fbbf24", "#f59e0b", "#f43f5e", "#fb923c", "#a78bfa", "#34d399", "#60a5fa", "#f472b6"];
+
 function ProgressBar({ pct, color = "#f97316" }) {
   return (
-    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 99, height: 8, overflow: "hidden", width: "100%" }}>
+    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 99, height: 12, overflow: "hidden", width: "100%" }}>
       <div style={{
         width: `${Math.min(pct, 100)}%`, height: "100%", borderRadius: 99,
         background: `linear-gradient(90deg, ${color}, #fbbf24)`,
+        boxShadow: pct >= 100 ? `0 0 18px ${color}, 0 0 6px #fbbf24` : `0 0 12px ${color}99`,
         transition: "width 0.6s cubic-bezier(.4,0,.2,1)"
       }} />
     </div>
@@ -150,6 +153,7 @@ export default function App() {
   const [reactionPicker, setReactionPicker] = useState(null); // message id
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [badgesExpanded, setBadgesExpanded] = useState(false);
+  const [cardMenuId, setCardMenuId] = useState(null);
   const [badgeModal, setBadgeModal] = useState(null); // { badge, earned }
   const [mentionAlert, setMentionAlert] = useState(null);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
@@ -2110,7 +2114,7 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 16px 90px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 16px 110px", position: "relative", zIndex: 1 }}>
 
         <div style={{ paddingTop: 28, paddingBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
@@ -2127,7 +2131,7 @@ export default function App() {
               const tzOffset = new Date().getTimezoneOffset() * -60000;
               const streak = getCurrentStreak(userName, challenges, tzOffset);
               return streak > 0 ? (
-                <div style={{ background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.45)", borderRadius: 20, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4, boxShadow: "0 0 18px rgba(249,115,22,0.3)" }}>
                   <span style={{ fontSize: 16 }}>🔥</span>
                   <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: "#f97316", letterSpacing: 1 }}>{streak}</span>
                 </div>
@@ -2157,12 +2161,24 @@ export default function App() {
                 const badges = getUserBadges(userName, challenges, messages, lbReactionCount);
               return badges.length > 0 ? (
                 <div style={{ marginBottom: 20 }}>
-                  <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: badgesExpanded ? 10 : 0 }}>
-                    <SectionLabel>YOUR BADGES ({badges.length})</SectionLabel>
-                    <span style={{ color: "#f97316", fontSize: 18, marginTop: -10 }}>{badgesExpanded ? "▲" : "▼"}</span>
-                  </button>
-                  {badgesExpanded && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <span style={{ fontSize: 11, color: "#666", fontFamily: "'Space Mono', monospace", letterSpacing: 2 }}>YOUR BADGES ({badges.length})</span>
+                    <button onClick={() => setBadgesExpanded(e => !e)} style={{ background: "none", border: "none", padding: "4px 0", cursor: "pointer", color: "#f97316", fontSize: 12, fontWeight: 700 }}>{badgesExpanded ? "Show less" : "See all"}</button>
+                  </div>
+                  {badgesExpanded ? (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{badges.map(b => <BadgeChip key={b.id} badge={b} earned={true} onTap={() => setBadgeModal({ badge: b, earned: true })} />)}</div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "4px 2px 8px", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+                      {badges.map((b, i) => {
+                        const c = BADGE_GLOW_COLORS[i % BADGE_GLOW_COLORS.length];
+                        return (
+                          <button key={b.id} aria-label={b.label} onClick={() => setBadgeModal({ badge: b, earned: true })}
+                            style={{ flex: "none", width: 36, height: 36, padding: 0, borderRadius: "50%", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, lineHeight: 1, background: `radial-gradient(circle at 30% 25%, ${c}55, #17171b 70%)`, border: `1.5px solid ${c}99`, boxShadow: `0 0 16px ${c}55, inset 0 0 10px ${c}33` }}>
+                            {b.emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               ) : null;
@@ -2205,19 +2221,25 @@ export default function App() {
                 const pct = Math.min(100, (myTotal / ch.goal) * 100);
                 const newChallenge = isNew(ch);
                 return (
-                  <div key={ch.id} style={{ background: isAccepted(ch) ? "rgba(74,222,128,0.04)" : "rgba(255,255,255,0.04)", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 18, padding: 18, marginBottom: 12, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 12px rgba(74,222,128,0.08)" : "none" }}>
+                  <div key={ch.id} style={{ background: isAccepted(ch) ? "linear-gradient(160deg, rgba(74,222,128,0.09), rgba(255,255,255,0.02))" : "linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))", border: `1px solid ${isAccepted(ch) ? "rgba(74,222,128,0.35)" : newChallenge ? "rgba(249,115,22,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 22, padding: 18, marginBottom: 14, position: "relative", opacity: showArchive ? 0.75 : 1, boxShadow: isAccepted(ch) ? "0 0 24px rgba(74,222,128,0.1)" : "0 4px 18px rgba(0,0,0,0.25)" }}>
                     {newChallenge && (
                       <div style={{ position: "absolute", top: -10, left: 16, background: "linear-gradient(90deg, #f97316, #fbbf24)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 900, color: "#fff", fontFamily: "'Space Mono', monospace", letterSpacing: 1 }}>✨ NEW</div>
                     )}
                     {ch.createdBy === userName && (
-                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ch.id); }} title="Delete challenge"
-                        style={{ position: "absolute", top: 14, right: 14, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, padding: "4px 8px", color: "#ef4444", cursor: "pointer", fontSize: 13, lineHeight: 1 }}>🗑</button>
+                      <div style={{ position: "absolute", bottom: 10, right: 12, zIndex: 5 }}>
+                        <button onClick={e => { e.stopPropagation(); setCardMenuId(cardMenuId === ch.id ? null : ch.id); }} aria-label="More options"
+                          style={{ background: "none", border: "none", color: "#777", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 8px" }}>⋯</button>
+                        {cardMenuId === ch.id && (
+                          <button onClick={e => { e.stopPropagation(); setCardMenuId(null); setDeleteConfirm(ch.id); }}
+                            style={{ position: "absolute", bottom: 34, right: 0, background: "#1a1a1f", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 10, padding: "8px 14px", color: "#ef4444", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 6px 20px rgba(0,0,0,0.5)" }}>🗑 Delete</button>
+                        )}
+                      </div>
                     )}
                     <div onClick={() => { setSelectedChallenge(ch); setScreen("challenge"); }} style={{ cursor: "pointer" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12, paddingRight: 36 }}>
-                        <div style={{ fontSize: 28 }}>{ch.emoji}</div>
-                        <div>
-                          <div style={{ fontWeight: 700, fontSize: 15 }}>{ch.name}</div>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+                        <div style={{ flex: "none", width: 48, height: 48, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, lineHeight: 1, background: "radial-gradient(circle at 30% 25%, rgba(249,115,22,0.45), #17171b 75%)", border: "1.5px solid rgba(249,115,22,0.55)", boxShadow: "0 0 16px rgba(249,115,22,0.35), inset 0 0 10px rgba(249,115,22,0.2)" }}>{ch.emoji}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 16 }}>{ch.name}</div>
                           <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Goal: {ch.goal.toLocaleString()} {ch.unit}</div>
                           {ch.dailyGoal && (() => {
                             const todayTotal = getDailyTotal(ch, userName, new Date().toISOString().slice(0, 10));
@@ -2230,12 +2252,12 @@ export default function App() {
                             </div>
                           )}
                         </div>
-                        <div style={{ marginLeft: "auto", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
+                        <div style={{ flex: "none", padding: "5px 10px", borderRadius: 99, background: "rgba(249,115,22,0.16)", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
                       </div>
                       <ProgressBar pct={pct} />
                       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 12, color: "#666" }}>
                         <span>{lb.length} participant{lb.length !== 1 ? "s" : ""}</span>
-                        <span>{lb[0] ? `🥇 ${lb[0].user}` : "No entries yet"}</span>
+                        <span style={{ color: lb[0] ? "#f0f0f0" : "#666", marginRight: ch.createdBy === userName ? 30 : 0 }}>{lb[0] ? <>🥇 Leading: <b>{lb[0].user}</b></> : "No entries yet"}</span>
                       </div>
                     </div>
                   </div>
@@ -2946,19 +2968,32 @@ export default function App() {
       </div>
 
       {/* Bottom nav */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(13,13,15,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.07)", padding: "10px 16px 20px", display: "flex", justifyContent: "space-between", zIndex: 100 }}>
-        {navItems.map(item => (
-          <button key={item.s} onClick={() => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") { markChatRead(); dismissMentionAlert(); } }}
-            style={{ background: "none", border: "none", color: screen === item.s ? "#f97316" : "#555", cursor: "pointer", padding: "4px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
-            <span style={{ fontSize: 18, position: "relative" }}>
-              {item.icon}
-              {item.s === "chat" && unreadCount > 0 && (
-                <span style={{ position: "absolute", top: -4, right: -6, background: "#ef4444", borderRadius: "50%", width: 14, height: 14, fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900 }}>{unreadCount}</span>
-              )}
-            </span>
-            {item.label}
-          </button>
-        ))}
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(18,18,22,0.78)", backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)", borderTop: "1px solid rgba(255,255,255,0.08)", padding: "10px 12px 22px", display: "flex", justifyContent: "space-around", alignItems: "flex-start", zIndex: 100 }}>
+        {navItems.map(item => {
+          const active = screen === item.s;
+          const onNav = () => { setScreen(item.s); setSelectedChallenge(null); if (item.s === "chat") { markChatRead(); dismissMentionAlert(); } };
+          if (item.s === "create") {
+            return (
+              <div key={item.s} style={{ width: 64, display: "flex", justifyContent: "center" }}>
+                <button onClick={onNav} aria-label="Create challenge"
+                  style={{ marginTop: -28, width: 58, height: 58, borderRadius: "50%", border: "none", cursor: "pointer", color: "#fff", fontSize: 30, fontWeight: 300, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 8px 24px rgba(249,115,22,0.55), 0 0 0 6px #0d0d0f" }}>+</button>
+              </div>
+            );
+          }
+          return (
+            <button key={item.s} onClick={onNav}
+              style={{ background: "none", border: "none", color: active ? "#f97316" : "#8a8a93", cursor: "pointer", padding: "4px 0", width: 64, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, fontFamily: "'Space Mono', monospace", letterSpacing: 0.5, transition: "color 0.2s", position: "relative" }}>
+              <span style={{ fontSize: 20, position: "relative", filter: active ? "drop-shadow(0 0 6px rgba(249,115,22,0.6))" : "none" }}>
+                {item.icon}
+                {item.s === "chat" && unreadCount > 0 && (
+                  <span style={{ position: "absolute", top: -4, right: -6, background: "#ef4444", borderRadius: "50%", width: 14, height: 14, fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900 }}>{unreadCount}</span>
+                )}
+              </span>
+              {item.label}
+              <span style={{ width: 18, height: 3, borderRadius: 2, background: active ? "#f97316" : "transparent", boxShadow: active ? "0 0 8px #f97316" : "none" }} />
+            </button>
+          );
+        })}
       </div>
     </div>
   );
