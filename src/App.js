@@ -101,6 +101,7 @@ function BadgeChip({ badge, earned = true, onTap }) {
 const ANIM_CSS = `
 @keyframes ssFadeUp { from { opacity: 0; transform: translateY(14px); } }
 @keyframes ssFade { from { opacity: 0; } }
+@keyframes ssConfetti { 0% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0deg); } 100% { opacity: 0.9; transform: translate3d(var(--dx), 105vh, 0) rotate(var(--rot)); } }
 .ss-card-in { animation: ssFadeUp 0.45s ease backwards; }
 .ss-screen-in { animation: ssFade 0.3s ease backwards; }
 .ss-press { transition: transform 0.12s ease; }
@@ -111,6 +112,61 @@ const ANIM_CSS = `
   .ss-press:active { transform: none; }
 }
 `;
+
+const CONFETTI_COLORS = ["#f97316", "#fbbf24", "#facc15", "#4ade80", "#60a5fa", "#f472b6", "#ffffff"];
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function Confetti({ count = 50 }) {
+  const [pieces] = useState(() => Array.from({ length: count }, (_, i) => ({
+    left: Math.random() * 100,
+    delay: Math.random() * 0.5,
+    dur: 2.2 + Math.random() * 1.6,
+    size: 6 + Math.random() * 6,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    dx: (Math.random() - 0.5) * 160,
+    rot: 360 + Math.random() * 720,
+    round: Math.random() > 0.6,
+  })));
+  if (prefersReducedMotion()) return null;
+  return (
+    <div aria-hidden="true" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, overflow: "hidden", pointerEvents: "none", zIndex: 1100 }}>
+      {pieces.map((p, i) => (
+        <span key={i} style={{
+          position: "absolute", top: -20, left: `${p.left}%`, width: p.size, height: p.round ? p.size : p.size * 0.45,
+          background: p.color, borderRadius: p.round ? "50%" : 2, opacity: 0,
+          "--dx": `${p.dx}px`, "--rot": `${p.rot}deg`,
+          animation: `ssConfetti ${p.dur}s ease-in ${p.delay}s forwards`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function CountUp({ value, duration = 800 }) {
+  const target = Number(value) || 0;
+  const decimals = Number.isInteger(target) ? 0 : 1;
+  const [display, setDisplay] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    if (prefersReducedMotion() || fromRef.current === target) { fromRef.current = target; setDisplay(target); return; }
+    const from = fromRef.current;
+    const start = performance.now();
+    let raf;
+    const tick = (now) => {
+      const t = Math.min((now - start) / duration, 1);
+      const v = from + (target - from) * (1 - Math.pow(1 - t, 3));
+      fromRef.current = v;
+      setDisplay(v);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return <>{Number(display.toFixed(decimals)).toLocaleString(undefined, { maximumFractionDigits: decimals })}</>;
+}
 
 const BADGE_GLOW_COLORS = ["#f97316", "#facc15", "#fbbf24", "#f59e0b", "#f43f5e", "#fb923c", "#a78bfa", "#34d399", "#60a5fa", "#f472b6"];
 
@@ -185,6 +241,7 @@ export default function App() {
   const [lbReactionPicker, setLbReactionPicker] = useState(null); // leaderboard user
   const [badgesExpanded, setBadgesExpanded] = useState(false);
   const [cardMenuId, setCardMenuId] = useState(null);
+  const [confettiKey, setConfettiKey] = useState(0);
   const [badgeModal, setBadgeModal] = useState(null); // { badge, earned }
   const [mentionAlert, setMentionAlert] = useState(null);
   const [notifPermission, setNotifPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "default");
@@ -934,6 +991,9 @@ export default function App() {
     // Auto-accept on first log
     const alreadyAccepted = (selectedChallenge.accepted || []).includes(userName);
 
+    const prevTotal = (selectedChallenge.logs || []).filter(l => l.user === userName).reduce((a, l) => a + l.amount, 0);
+    const crossedGoal = prevTotal < selectedChallenge.goal && prevTotal + amt >= selectedChallenge.goal;
+
     const prevBadges = getUserBadges(userName, challenges);
     const updated = challenges.map(ch =>
       ch.id === selectedChallenge.id ? {
@@ -950,6 +1010,7 @@ export default function App() {
 
     setLogAmount("");
     showToast(`+${amt} ${selectedChallenge.unit} logged! 💪`);
+    if (crossedGoal) { setConfettiKey(k => k + 1); setTimeout(() => setConfettiKey(0), 4500); }
 
     // Calculate streak after log
     const tzOffset = new Date().getTimezoneOffset() * -60000;
@@ -1699,10 +1760,12 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <style>{ANIM_CSS}</style>
+      {confettiKey > 0 && newBadges.length === 0 && <Confetti key={confettiKey} />}
       <div style={{ position: "fixed", top: -100, left: "50%", transform: "translateX(-50%)", width: 600, maxWidth: "100vw", height: 300, borderRadius: "50%", background: "radial-gradient(ellipse, rgba(249,115,22,0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
 
       {newBadges.length > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <Confetti />
           <div style={{ background: "linear-gradient(135deg, #1a1a1f, #2a1a00)", border: "2px solid #f97316", borderRadius: 24, padding: "32px 28px", textAlign: "center", maxWidth: 320, width: "100%", boxShadow: "0 0 60px rgba(249,115,22,0.5)" }}>
             <div style={{ fontSize: 11, color: "#f97316", fontFamily: "'Space Mono', monospace", letterSpacing: 3, marginBottom: 16 }}>🎉 BADGE UNLOCKED 🎉</div>
             {newBadges.map(b => (
@@ -2165,7 +2228,7 @@ export default function App() {
               return streak > 0 ? (
                 <div style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.45)", borderRadius: 10, padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ fontSize: 16 }}>🔥</span>
-                  <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: "#f97316", letterSpacing: 1 }}>{streak}</span>
+                  <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: "#f97316", letterSpacing: 1 }}><CountUp value={streak} /></span>
                 </div>
               ) : null;
             })()}
@@ -2285,7 +2348,7 @@ export default function App() {
                             </div>
                           )}
                         </div>
-                        <div style={{ flex: "none", padding: "5px 10px", borderRadius: 6, background: "rgba(249,115,22,0.16)", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}>{Math.round(pct)}%</div>
+                        <div style={{ flex: "none", padding: "5px 10px", borderRadius: 6, background: "rgba(249,115,22,0.16)", fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#f97316", fontWeight: 700 }}><CountUp value={Math.round(pct)} />%</div>
                       </div>
                       <ProgressBar pct={pct} />
                       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 12, color: "#666" }}>
@@ -2451,7 +2514,7 @@ export default function App() {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: "#aaa", textAlign: "right" }}>
-                        <div style={{ fontWeight: 700, color: "#fff" }}>{entry.total.toLocaleString()}</div>
+                        <div style={{ fontWeight: 700, color: "#fff" }}><CountUp value={entry.total} /></div>
                         <div style={{ fontSize: 10 }}>{ch.unit}</div>
                       </div>
                       <div style={{ position: "relative" }}>
@@ -2848,7 +2911,7 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 28, color: i === 0 ? "#fbbf24" : "#f97316", lineHeight: 1 }}>{entry.points}</div>
+                      <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 28, color: i === 0 ? "#fbbf24" : "#f97316", lineHeight: 1 }}><CountUp value={entry.points} /></div>
                       <div style={{ fontSize: 10, color: "#666", fontFamily: "'Space Mono', monospace" }}>PTS</div>
                     </div>
                   </div>
@@ -2897,7 +2960,7 @@ export default function App() {
                       </div>
                       <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
                         <div style={{ fontSize: 13, color: "#888" }}>{badges.length} badge{badges.length !== 1 ? "s" : ""}</div>
-                        <div style={{ fontSize: 13, color: "#f97316", fontWeight: 700 }}>🏆 {getPoints(userName, challenges)} pts</div>
+                        <div style={{ fontSize: 13, color: "#f97316", fontWeight: 700 }}>🏆 <CountUp value={getPoints(userName, challenges)} /> pts</div>
                       </div>
                     </div>
                   </div>
